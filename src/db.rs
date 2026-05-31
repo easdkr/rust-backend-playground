@@ -1,5 +1,5 @@
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbErr, Schema};
-use crate::entities::post;
+use crate::infrastructure::persistence::seaorm::model as post;
 
 pub async fn connect(db_url: &str) -> Result<DatabaseConnection, DbErr> {
     let db = Database::connect(db_url).await?;
