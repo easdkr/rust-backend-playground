@@ -12,6 +12,11 @@ pub fn domain_from_record(record: PostRecord) -> Result<Post, PostError> {
         title: record.title,
         content: record.content,
         status,
+        user_id: if record.user_id.is_empty() {
+            None
+        } else {
+            Some(record.user_id)
+        },
         created_at: Some(record.created_at),
     })
 }

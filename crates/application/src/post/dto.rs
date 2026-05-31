@@ -28,8 +28,8 @@ pub struct CreatePostCmd {
 }
 
 impl CreatePostCmd {
-    pub fn into_domain(self) -> Post {
-        Post::new(self.title, self.content)
+    pub fn into_domain(self, user_id: String) -> Post {
+        Post::new(self.title, self.content, user_id)
     }
 }
 

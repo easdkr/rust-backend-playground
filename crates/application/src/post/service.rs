@@ -16,11 +16,21 @@ impl PostService {
         Self { repo }
     }
 
-    pub async fn create(&self, cmd: CreatePostCmd) -> Result<Post, PostError> {
-        let post = cmd.into_domain();
+    pub async fn create(
+        &self,
+        current_user_id: String,
+        cmd: CreatePostCmd,
+    ) -> Result<Post, PostError> {
+        let post = cmd.into_domain(current_user_id);
+        let user_id = post.user_id.clone().expect("new post must have owner");
         let saved = self
             .repo
-            .create(post.title, post.content, post.status.as_str().to_string())
+            .create(
+                post.title,
+                post.content,
+                post.status.as_str().to_string(),
+                user_id,
+            )
             .await
             .map_err(PostError::repo)?;
         domain_from_record(saved)
@@ -41,7 +51,12 @@ impl PostService {
         domain_from_record(record)
     }
 
-    pub async fn update(&self, id: i32, cmd: UpdatePostCmd) -> Result<Post, PostError> {
+    pub async fn update(
+        &self,
+        id: i32,
+        current_user_id: &str,
+        cmd: UpdatePostCmd,
+    ) -> Result<Post, PostError> {
         let record = self
             .repo
             .find_by_id(id)
@@ -50,6 +65,7 @@ impl PostService {
             .ok_or(PostError::NotFound(id))?;
 
         let mut post = domain_from_record(record)?;
+        Self::verify_ownership(&post, current_user_id)?;
         post.apply_update(cmd.title, cmd.content);
 
         let saved = self
@@ -89,11 +105,28 @@ impl PostService {
         domain_from_record(saved)
     }
 
-    pub async fn delete(&self, id: i32) -> Result<(), PostError> {
+    pub async fn delete(&self, id: i32, current_user_id: &str) -> Result<(), PostError> {
+        let record = self
+            .repo
+            .find_by_id(id)
+            .await
+            .map_err(PostError::repo)?
+            .ok_or(PostError::NotFound(id))?;
+
+        let post = domain_from_record(record)?;
+        Self::verify_ownership(&post, current_user_id)?;
+
         let deleted = self.repo.delete(id).await.map_err(PostError::repo)?;
         if !deleted {
             return Err(PostError::NotFound(id));
         }
         Ok(())
+    }
+
+    fn verify_ownership(post: &Post, current_user_id: &str) -> Result<(), PostError> {
+        match &post.user_id {
+            Some(owner_id) if owner_id == current_user_id => Ok(()),
+            _ => Err(PostError::OwnershipError),
+        }
     }
 }

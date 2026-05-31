@@ -7,7 +7,7 @@ pub fn require_permission(
     user: AuthenticatedUser,
     permission: Permission,
 ) -> Result<AuthenticatedUser, AppError> {
-    if user.0.permissions.contains(&permission) {
+    if user.claims.permissions.contains(&permission) {
         Ok(user)
     } else {
         Err(AppError::Forbidden(format!(
@@ -17,7 +17,7 @@ pub fn require_permission(
 }
 
 pub fn require_role(user: AuthenticatedUser, role: Role) -> Result<AuthenticatedUser, AppError> {
-    if user.0.role == role {
+    if user.claims.role == role {
         Ok(user)
     } else {
         Err(AppError::Forbidden(format!("{role:?} role required")))

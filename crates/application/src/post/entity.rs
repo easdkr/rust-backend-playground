@@ -32,16 +32,18 @@ pub struct Post {
     pub title: String,
     pub content: String,
     pub status: PostStatus,
+    pub user_id: Option<String>,
     pub created_at: Option<DateTime<Utc>>,
 }
 
 impl Post {
-    pub fn new(title: String, content: String) -> Self {
+    pub fn new(title: String, content: String, user_id: String) -> Self {
         Self {
             id: None,
             title,
             content,
             status: PostStatus::Draft,
+            user_id: Some(user_id),
             created_at: None,
         }
     }

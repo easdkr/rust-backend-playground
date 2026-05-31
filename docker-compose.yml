@@ -45,6 +45,12 @@ services:
         condition: service_healthy
       valkey:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
 
   batch:
     profiles: ["app"]
@@ -62,6 +68,8 @@ services:
         condition: service_healthy
       valkey:
         condition: service_started
+      app:
+        condition: service_healthy
 
 volumes:
   pgdata:

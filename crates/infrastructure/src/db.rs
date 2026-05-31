@@ -1,9 +1,8 @@
 use std::time::Duration;
 
 use libs::env::{env_u32, env_u64};
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbErr, Schema};
-
-use crate::persistence::seaorm::{post, user};
+use migration::{Migrator, MigratorTrait};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr};
 
 pub async fn connect(db_url: &str) -> Result<DatabaseConnection, DbErr> {
     let mut options = ConnectOptions::new(db_url.to_owned());
@@ -64,40 +63,6 @@ fn timeout_from_ms_env(key: &str, default_ms: u64) -> String {
 }
 
 async fn setup_schema(db: &DatabaseConnection) -> Result<(), DbErr> {
-    let builder = db.get_database_backend();
-    let schema = Schema::new(builder);
-
-    let mut stmt = schema.create_table_from_entity(post::Entity);
-    stmt.if_not_exists();
-
-    db.execute(builder.build(&stmt)).await?;
-    migrate_posts_status(db).await?;
-
-    let mut users_stmt = schema.create_table_from_entity(user::Entity);
-    users_stmt.if_not_exists();
-    db.execute(builder.build(&users_stmt)).await?;
-
-    Ok(())
-}
-
-async fn migrate_posts_status(db: &DatabaseConnection) -> Result<(), DbErr> {
-    use sea_orm::Statement;
-
-    let backend = db.get_database_backend();
-    let sql = match backend {
-        sea_orm::DatabaseBackend::Postgres => {
-            "ALTER TABLE posts ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'draft'"
-        }
-        sea_orm::DatabaseBackend::Sqlite => {
-            "ALTER TABLE posts ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'"
-        }
-        sea_orm::DatabaseBackend::MySql => {
-            "ALTER TABLE posts ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'draft'"
-        }
-    };
-
-    db.execute(Statement::from_string(backend, sql.to_string()))
-        .await?;
-
+    Migrator::up(db, None).await?;
     Ok(())
 }

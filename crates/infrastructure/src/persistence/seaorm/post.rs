@@ -10,6 +10,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub content: String,
     pub status: String,
+    pub user_id: String,
     pub created_at: DateTimeUtc,
 }
 

@@ -1,0 +1,12 @@
+[package]
+name = "migration"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "migration"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait.workspace = true
+sea-orm-migration.workspace = true

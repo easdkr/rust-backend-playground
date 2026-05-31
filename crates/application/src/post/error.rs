@@ -3,6 +3,7 @@ use crate::error::DomainError;
 #[derive(Debug)]
 pub enum PostError {
     NotFound(i32),
+    OwnershipError,
     Domain(String),
     Internal(String),
 }
@@ -11,6 +12,7 @@ impl std::fmt::Display for PostError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PostError::NotFound(id) => write!(f, "Post with id {id} not found"),
+            PostError::OwnershipError => write!(f, "Not the owner of this post"),
             PostError::Domain(msg) => write!(f, "{msg}"),
             PostError::Internal(msg) => write!(f, "Internal error: {msg}"),
         }

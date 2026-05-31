@@ -9,7 +9,13 @@ use super::post::{ActiveModel, Entity, Post};
 pub trait PostRepository: Send + Sync {
     async fn find_all(&self) -> Result<Vec<Post>, String>;
     async fn find_by_id(&self, id: i32) -> Result<Option<Post>, String>;
-    async fn create(&self, title: String, content: String, status: String) -> Result<Post, String>;
+    async fn create(
+        &self,
+        title: String,
+        content: String,
+        status: String,
+        user_id: String,
+    ) -> Result<Post, String>;
     async fn update(
         &self,
         id: i32,
@@ -48,11 +54,18 @@ impl PostRepository for SeaOrmPostRepository {
             .map_err_string()
     }
 
-    async fn create(&self, title: String, content: String, status: String) -> Result<Post, String> {
+    async fn create(
+        &self,
+        title: String,
+        content: String,
+        status: String,
+        user_id: String,
+    ) -> Result<Post, String> {
         let active = ActiveModel {
             title: Set(title),
             content: Set(content),
             status: Set(status),
+            user_id: Set(user_id),
             created_at: Set(Utc::now()),
             ..Default::default()
         };

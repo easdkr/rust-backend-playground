@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "migration",
     "crates/application",
     "crates/infrastructure",
     "crates/libs",
@@ -26,6 +27,7 @@ chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
 redis = { version = "0.27.5", features = ["tokio-comp", "connection-manager"] }
 sea-orm = { version = "1.1.0", features = ["sqlx-postgres", "runtime-tokio-native-tls", "macros"] }
+sea-orm-migration = { version = "1.1.0", features = ["runtime-tokio-native-tls", "sqlx-postgres"] }
 serial_test = "3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
