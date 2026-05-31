@@ -25,7 +25,7 @@ docker compose up -d
 ```
 
 실행이 완료되면 다음 서비스들이 활성화됩니다:
-- **PostgreSQL 17**: `127.0.0.1:5432` (Username: `postgres`, Password: `postgrespassword`, DB: `playground`)
+- **PostgreSQL 17**: `127.0.0.1:5433` (Username: `postgres`, Password: `postgrespassword`, DB: `playground`)
 - **Valkey 8**: `127.0.0.1:6379` (인메모리 캐시 저장소)
 
 ### 2. Rust 백엔드 애플리케이션 실행
@@ -37,7 +37,7 @@ cargo run
 서버 구동 시 자동으로 PostgreSQL 데이터베이스에 테이블 스키마가 없는 경우 `posts` 테이블을 생성합니다.
 ```text
 INFO Starting Rust Backend Playground...
-INFO Connecting to database at postgres://postgres:postgrespassword@127.0.0.1:5432/playground...
+INFO Connecting to database at postgres://postgres:postgrespassword@127.0.0.1:5433/playground...
 INFO Database connected and schema initialized successfully!
 INFO Listening on http://127.0.0.1:3000
 ```
