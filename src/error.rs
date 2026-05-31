@@ -1,0 +1,44 @@
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
+use serde_json::json;
+
+#[derive(Debug)]
+pub enum AppError {
+    DatabaseError(sea_orm::DbErr),
+    NotFound(String),
+    BadRequest(String),
+}
+
+impl From<sea_orm::DbErr> for AppError {
+    fn from(err: sea_orm::DbErr) -> Self {
+        AppError::DatabaseError(err)
+    }
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = match self {
+            AppError::DatabaseError(err) => {
+                tracing::error!("Database error occurred: {:?}", err);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal database error".to_string(),
+                )
+            }
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+        };
+
+        let body = Json(json!({
+            "success": false,
+            "error": error_message,
+        }));
+
+        (status, body).into_response()
+    }
+}
+
+pub type AppResult<T> = Result<T, AppError>;
