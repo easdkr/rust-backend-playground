@@ -2,118 +2,180 @@
 
 Tokio + Axum + SeaORM(PostgreSQL) + Valkey 기반의 고성능 비동기 Rust 백엔드 플레이그라운드입니다.
 
-이 프로젝트는 Docker Compose를 활용하여 최신 **PostgreSQL 17** 데이터베이스와 고성능 인메모리 저장소인 **Valkey 8**을 탑재하였습니다. 로컬 SQLite에서 실제 프로덕션 환경에 가까운 멀티 컨테이너 환경으로 업그레이드되어 복잡한 DB 및 캐시 연동을 완벽히 테스트할 수 있습니다.
+레이어드 workspace 구조(`application` → `infrastructure` / `api` → `server`·`batch`)로 crate가 분리되어 있으며, Docker Compose로 PostgreSQL 17과 Valkey 8을 로컬에서 띄울 수 있습니다.
 
 ---
 
 ## 🛠️ 기술 스택
-- **비동기 런타임 (Async Runtime)**: [Tokio](https://tokio.rs/) (전체 기능 탑재)
-- **웹 프레임워크 (Web Framework)**: [Axum v0.7](https://github.com/tokio-rs/axum) (모던 고성능 비동기 웹 프레임워크)
-- **ORM & Database**: [SeaORM v1.1](https://www.sea-ql.org/SeaORM/) + **PostgreSQL 17** (비동기 ORM 및 자동 스키마 초기화)
-- **인메모리 데이터 저장소**: **Valkey 8** (오픈소스 Redis 완전 대체재, `redis` 크레이트와 100% 호환)
-- **로깅 & 트레이싱 (Logging)**: [Tracing](https://github.com/tokio-rs/tracing) (비동기 로깅)
-- **직렬화 (Serialization)**: [Serde](https://serde.rs/) (데이터 파싱)
+
+- **비동기 런타임**: [Tokio](https://tokio.rs/)
+- **웹 프레임워크**: [Axum v0.7](https://github.com/tokio-rs/axum)
+- **ORM**: [SeaORM v1.1](https://www.sea-ql.org/SeaORM/) + **PostgreSQL 17**
+- **캐시**: **Valkey 8** (`redis` 크레이트 호환)
+- **로깅**: [Tracing](https://github.com/tokio-rs/tracing)
+- **직렬화**: [Serde](https://serde.rs/)
 
 ---
 
-## 🚀 빠른 시작 (Quick Start)
+## 📋 사전 요구 사항
 
-### 1. Docker Compose로 DB & 캐시 서버 시작
-프로젝트 루트 디렉터리에서 다음 명령어를 실행하여 PostgreSQL 17 및 Valkey 컨테이너를 실행합니다.
+| 용도 | 필요 도구 |
+|:---|:---|
+| 로컬 Rust 실행 | [Rust](https://rustup.rs/) (stable), Docker (DB/캐시용) |
+| 컨테이너 전체 실행 | Docker, Docker Compose v2 |
+
+---
+
+## 🚀 로컬에서 실행 (권장 개발 흐름)
+
+### 1. 환경 변수 준비
+
+```bash
+cp .env.example .env
+```
+
+`.env` 기본값은 Docker Compose로 띄운 PostgreSQL(`127.0.0.1:5433`)·Valkey(`127.0.0.1:6379`)에 맞춰져 있습니다.
+
+### 2. DB & 캐시만 컨테이너로 기동
+
 ```bash
 docker compose up -d
 ```
 
-실행이 완료되면 다음 서비스들이 활성화됩니다:
-- **PostgreSQL 17**: `127.0.0.1:5433` (Username: `postgres`, Password: `postgrespassword`, DB: `playground`)
-- **Valkey 8**: `127.0.0.1:6379` (인메모리 캐시 저장소)
+| 서비스 | 접속 |
+|:---|:---|
+| PostgreSQL 17 | `127.0.0.1:5433` — user `postgres`, password `postgrespassword`, DB `playground` |
+| Valkey 8 | `127.0.0.1:6379` |
 
-### 2. Rust 백엔드 애플리케이션 실행
-서버가 띄워지면 터미널에서 아래 명령어로 백엔드를 구동합니다.
+### 3. Rust 서버 실행
+
+워크스페이스 루트에서:
+
 ```bash
 cargo run
+# 또는 릴리스 빌드
+cargo run --release
 ```
 
-서버 구동 시 자동으로 PostgreSQL 데이터베이스에 테이블 스키마가 없는 경우 `posts` 테이블을 생성합니다.
+기동 시 `posts` 테이블이 없으면 자동 생성됩니다.
+
 ```text
 INFO Starting Rust Backend Playground...
-INFO Connecting to database at postgres://postgres:postgrespassword@127.0.0.1:5433/playground...
+INFO Connecting to database...
 INFO Database connected and schema initialized successfully!
 INFO Listening on http://127.0.0.1:3000
 ```
-웹 브라우저를 열고 `http://127.0.0.1:3000`에 접속하여 플레이그라운드 대시보드를 확인할 수 있습니다.
+
+브라우저: [http://127.0.0.1:3000](http://127.0.0.1:3000)
+
+### 4. 배치 워커 실행 (선택)
+
+DB/캐시가 떠 있는 상태에서, 주기적으로 포스트 개수를 집계하고 `VALKEY_URL`이 있으면 `playground:posts:count` 키에 동기화합니다.
+
+```bash
+cargo run -p batch
+```
+
+### 5. 인프라 중지
+
+```bash
+docker compose down
+# 볼륨까지 삭제: docker compose down -v
+```
 
 ---
 
-## ⚡ Valkey(Redis) 연동 및 가이드
-Valkey는 Redis의 완전한 오픈소스 대체재로 프로토콜이 100% 호환됩니다. 
-의존성에 이미 `redis` 크레이트가 추가되어 있어, 비동기 캐싱이나 세션 관리가 필요할 때 바로 활용 가능합니다.
+## 🐳 컨테이너로 전체 스택 실행
 
-**연동 설정 (.env):**
+PostgreSQL, Valkey, **Rust API 서버**, **배치 워커**를 한 번에 띄웁니다.
+
+```bash
+docker compose --profile app up -d --build
+```
+
+| 서비스 | 접속 |
+|:---|:---|
+| API | [http://127.0.0.1:3000](http://127.0.0.1:3000) |
+| Batch | 백그라운드 워커 (30초마다 포스트 수 → Valkey) |
+| PostgreSQL | 호스트 `127.0.0.1:5433` (컨테이너 내부에서는 `postgres:5432`) |
+| Valkey | 호스트 `127.0.0.1:6379` (컨테이너 내부에서는 `valkey:6379`) |
+
+로그 확인:
+
+```bash
+docker compose logs -f app
+docker compose logs -f batch
+```
+
+중지:
+
+```bash
+docker compose --profile app down
+```
+
+> **참고**: `app` 서비스는 `profiles: ["app"]`로 분리되어 있어, `docker compose up -d`만 실행하면 DB/캐시만 올라갑니다(로컬 `cargo run` 개발용).
+
+---
+
+## ⚡ Valkey(Redis) 연동
+
+`.env` / `.env.example`:
+
 ```env
 VALKEY_URL=redis://127.0.0.1:6379
 ```
 
-**러스트 코드 활용 예시:**
-```rust
-use redis::AsyncCommands;
-
-async fn get_cache_example(con: &mut redis::aio::Connection) -> redis::RedisResult<String> {
-    let _: () = con.set("key", "valkey_data").await?;
-    let val: String = con.get("key").await?;
-    Ok(val)
-}
-```
+컨테이너 내부(`app` 서비스)에서는 `redis://valkey:6379`를 사용합니다.
 
 ---
 
-## 📡 API 엔드포인트 목록
+## 📡 API 엔드포인트
 
 | HTTP 메서드 | 엔드포인트 | 설명 | 요청 본문 (JSON) |
 |:---|:---|:---|:---|
-| **GET** | `/` | 프로젝트 웰컴 대시보드 | (없음) |
-| **GET** | `/posts` | 전체 포스트 목록 조회 (최신순) | (없음) |
+| **GET** | `/` | 웰컴 대시보드 | (없음) |
+| **GET** | `/posts` | 전체 포스트 조회 (최신순) | (없음) |
 | **POST** | `/posts` | 새 포스트 작성 | `{ "title": "제목", "content": "내용" }` |
-| **GET** | `/posts/:id` | 특정 ID의 포스트 조회 | (없음) |
-| **PUT** | `/posts/:id` | 특정 ID의 포스트 수정 (선택적 필드) | `{ "title": "수정할 제목", "content": "수정할 내용" }` |
-| **DELETE**| `/posts/:id` | 특정 ID의 포스트 삭제 | (없음) |
+| **GET** | `/posts/:id` | 특정 포스트 조회 | (없음) |
+| **PUT** | `/posts/:id` | 포스트 수정 | `{ "title": "...", "content": "..." }` |
+| **DELETE** | `/posts/:id` | 포스트 삭제 | (없음) |
 
----
+### cURL 예시
 
-## 💡 테스트 가이드 (cURL 예제)
-
-### 1. 새 포스트 생성 (POST)
 ```bash
 curl -X POST http://127.0.0.1:3000/posts \
   -H "Content-Type: application/json" \
-  -d '{"title": "Docker PostgreSQL 테스트", "content": "PostgreSQL 17 컨테이너로 작동 중인 비동기 Rust 서버입니다!"}'
-```
+  -d '{"title": "테스트", "content": "PostgreSQL + Axum"}'
 
-### 2. 전체 포스트 조회 (GET)
-```bash
 curl http://127.0.0.1:3000/posts
-```
-
-### 3. 특정 포스트 수정 (PUT)
-```bash
-curl -X PUT http://127.0.0.1:3000/posts/1 \
-  -H "Content-Type: application/json" \
-  -d '{"title": "수정된 포스트 제목"}'
-```
-
-### 4. 특정 포스트 삭제 (DELETE)
-```bash
-curl -X DELETE http://127.0.0.1:3000/posts/1
 ```
 
 ---
 
 ## 📂 프로젝트 구조
-- [docker-compose.yml](file:///Users/june/workspace/personal/rust-backend-playground/docker-compose.yml): PostgreSQL 17 및 Valkey 서비스 구성을 정의한 도커 컴포즈 파일
-- [Cargo.toml](file:///Users/june/workspace/personal/rust-backend-playground/Cargo.toml): postgres 지원 및 redis 의존성이 추가된 파일
-- [.env](file:///Users/june/workspace/personal/rust-backend-playground/.env): PostgreSQL 및 Valkey 접속 정보를 담은 환경 변수
-- [src/main.rs](file:///Users/june/workspace/personal/rust-backend-playground/src/main.rs): 서버 실행, DB 초기화 및 라우팅 설정
-- [src/db.rs](file:///Users/june/workspace/personal/rust-backend-playground/src/db.rs): PostgreSQL 연결 및 자동 스키마 제네레이터
-- [src/entities/](file:///Users/june/workspace/personal/rust-backend-playground/src/entities/): SeaORM 모델 엔티티 폴더
-- [src/handlers.rs](file:///Users/june/workspace/personal/rust-backend-playground/src/handlers.rs): REST API 엔드포인트 비즈니스 로직
-- [src/error.rs](file:///Users/june/workspace/personal/rust-backend-playground/src/error.rs): 커스텀 에러 변환기
+
+```
+.
+├── docker-compose.yml   # postgres, valkey, (profile) app
+├── Dockerfile           # API 서버 이미지 빌드
+├── .env.example         # 로컬 개발용 환경 변수 템플릿
+└── crates/
+    ├── application/     # 유스케이스, DTO, 입력 검증
+    ├── infrastructure/  # SeaORM 엔티티, 리포지토리, DB 연결
+    ├── api/             # HTTP 핸들러, 라우팅
+    ├── server/          # API 진입점 (HTTP)
+    └── batch/           # 배치 진입점 (주기적 작업)
+```
+
+---
+
+## 🔧 환경 변수
+
+| 변수 | 기본값 (미설정 시) | 설명 |
+|:---|:---|:---|
+| `DATABASE_URL` | `postgres://...@127.0.0.1:5433/playground` | SeaORM 연결 문자열 |
+| `VALKEY_URL` | (없음) | 캐시 연동 시 사용 |
+| `HOST` | `127.0.0.1` | 바인드 주소 (`0.0.0.0` in Docker) |
+| `PORT` | `3000` | HTTP 포트 |
+| `RUST_LOG` | main.rs 내 기본 필터 | tracing 로그 레벨 |
+| `BATCH_INTERVAL_SECS` | `60` | 배치 작업 주기(초), `batch` 크레이트 |

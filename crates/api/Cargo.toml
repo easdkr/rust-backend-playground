@@ -1,0 +1,14 @@
+[package]
+name = "api"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+application = { path = "../application" }
+async-trait.workspace = true
+axum.workspace = true
+libs = { path = "../libs" }
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+validator.workspace = true

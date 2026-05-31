@@ -1,0 +1,11 @@
+[package]
+name = "infrastructure"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+redis.workspace = true
+sea-orm.workspace = true
+serde.workspace = true

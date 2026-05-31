@@ -1,0 +1,17 @@
+[package]
+name = "batch"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "rust-backend-playground-batch"
+path = "src/main.rs"
+
+[dependencies]
+application = { path = "../application" }
+infrastructure = { path = "../infrastructure" }
+dotenvy.workspace = true
+tokio.workspace = true
+tokio-cron-scheduler.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

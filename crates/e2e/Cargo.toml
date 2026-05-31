@@ -1,0 +1,17 @@
+[package]
+name = "e2e"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+api = { path = "../api" }
+application = { path = "../application" }
+infrastructure = { path = "../infrastructure" }
+axum-test.workspace = true
+dotenvy.workspace = true
+sea-orm.workspace = true
+serde_json.workspace = true
+serial_test.workspace = true
+testcontainers-modules.workspace = true
+tokio.workspace = true

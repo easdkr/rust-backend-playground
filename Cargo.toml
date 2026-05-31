@@ -1,19 +1,36 @@
-[package]
-name = "rust-backend-playground"
+[workspace]
+resolver = "2"
+members = [
+    "crates/application",
+    "crates/infrastructure",
+    "crates/libs",
+    "crates/api",
+    "crates/server",
+    "crates/batch",
+    "crates/e2e",
+]
+default-members = ["crates/server"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
+[workspace.dependencies]
+async-trait = "0.1"
 axum = "0.7"
-tokio = { version = "1", features = ["full"] }
-sea-orm = { version = "1.1.0", features = [ "sqlx-postgres", "runtime-tokio-native-tls", "macros" ] }
+axum-test = "16"
+chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"
+redis = { version = "0.27.5", features = ["tokio-comp", "connection-manager"] }
+sea-orm = { version = "1.1.0", features = ["sqlx-postgres", "runtime-tokio-native-tls", "macros"] }
+serial_test = "3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
+tokio-cron-scheduler = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-dotenvy = "0.15"
-chrono = "0.4"
-redis = { version = "0.27.5", features = ["tokio-comp", "connection-manager"] }
-
-
-
+tower = "0.5"
+tower-http = { version = "0.6", features = ["catch-panic", "request-id", "trace"] }
+validator = { version = "0.19", features = ["derive"] }

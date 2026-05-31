@@ -1,0 +1,10 @@
+[package]
+name = "libs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tracing.workspace = true

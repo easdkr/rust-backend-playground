@@ -2,7 +2,6 @@ services:
   postgres:
     image: postgres:17-alpine
     container_name: playground-postgres
-    restart: always
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgrespassword
@@ -11,15 +10,58 @@ services:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d playground"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   valkey:
     image: valkey/valkey:8-alpine
     container_name: playground-valkey
-    restart: always
     ports:
       - "6379:6379"
     volumes:
       - valkeydata:/data
+
+  # 전체 스택(앱 포함) 실행: docker compose --profile app up -d --build
+  app:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: playground-app
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://postgres:postgrespassword@postgres:5432/playground
+      VALKEY_URL: redis://valkey:6379
+      HOST: 0.0.0.0
+      PORT: "3000"
+      RUST_LOG: rust_backend_playground=debug,tower_http=debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+
+  batch:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: playground-batch
+    command: ["rust-backend-playground-batch"]
+    environment:
+      DATABASE_URL: postgres://postgres:postgrespassword@postgres:5432/playground
+      VALKEY_URL: redis://valkey:6379
+      RUST_LOG: rust_backend_playground_batch=debug,infrastructure=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_started
 
 volumes:
   pgdata:

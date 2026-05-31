@@ -1,0 +1,10 @@
+[package]
+name = "application"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+chrono.workspace = true
+infrastructure = { path = "../infrastructure" }
+serde.workspace = true
+validator.workspace = true
