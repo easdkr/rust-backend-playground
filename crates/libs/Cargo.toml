@@ -3,8 +3,15 @@ name = "libs"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+redis = ["dep:redis"]
+telemetry = ["dep:tracing-subscriber"]
+
 [dependencies]
 axum.workspace = true
+redis = { workspace = true, optional = true }
 tower.workspace = true
 tower-http.workspace = true
 tracing.workspace = true
+tracing-subscriber = { workspace = true, optional = true }

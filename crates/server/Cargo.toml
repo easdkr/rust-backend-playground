@@ -10,9 +10,10 @@ path = "src/main.rs"
 [dependencies]
 api = { path = "../api" }
 application = { path = "../application" }
+async-trait.workspace = true
 infrastructure = { path = "../infrastructure" }
+libs = { path = "../libs", features = ["telemetry"] }
 axum.workspace = true
 dotenvy.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true

@@ -11,11 +11,15 @@ pub enum AppError {
     DatabaseError(String),
     NotFound(String),
     BadRequest(String),
+    Unauthorized(String),
+    Forbidden(String),
+    TokenExpired(String),
+    TokenBlacklisted(String),
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let (status, error_message) = match self {
+        let (status, error_message) = match &self {
             AppError::DatabaseError(err) => {
                 tracing::error!("Database error occurred: {}", err);
                 (
@@ -23,8 +27,12 @@ impl IntoResponse for AppError {
                     "Internal database error".to_string(),
                 )
             }
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
+            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
+            AppError::TokenExpired(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
+            AppError::TokenBlacklisted(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
         };
 
         let body = Json(json!({

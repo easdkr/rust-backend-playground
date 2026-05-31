@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+libs = { path = "../libs", features = ["redis"] }
 chrono.workspace = true
 redis.workspace = true
 sea-orm.workspace = true

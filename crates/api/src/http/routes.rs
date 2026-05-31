@@ -1,12 +1,22 @@
-use axum::{Router, routing::get};
+use axum::{
+    Router,
+    middleware::from_fn_with_state,
+    routing::{get, post},
+};
 use libs::http::HttpAspects;
 
+use super::auth;
 use super::handlers;
+use super::middleware::auth::{jwt_auth_middleware, require_admin_middleware};
 use crate::http::state::AppState;
 
 pub fn configure_routes(state: AppState) -> Router {
-    let router = Router::new()
-        .route("/", get(welcome_handler))
+    let public = Router::new()
+        .route("/auth/login", post(auth::login))
+        .route("/auth/refresh", post(auth::refresh));
+
+    let protected = Router::new()
+        .route("/auth/logout", post(auth::logout))
         .route(
             "/posts",
             get(handlers::list_posts).post(handlers::create_post),
@@ -17,10 +27,19 @@ pub fn configure_routes(state: AppState) -> Router {
                 .put(handlers::update_post)
                 .delete(handlers::delete_post),
         )
-        .route(
-            "/posts/:id/publish",
-            axum::routing::post(handlers::publish_post),
-        )
+        .route("/posts/:id/publish", post(handlers::publish_post))
+        .route_layer(from_fn_with_state(state.clone(), jwt_auth_middleware));
+
+    let admin = Router::new()
+        .route("/admin/users", get(auth::list_users))
+        .route_layer(from_fn_with_state(state.clone(), require_admin_middleware))
+        .route_layer(from_fn_with_state(state.clone(), jwt_auth_middleware));
+
+    let router = Router::new()
+        .route("/", get(welcome_handler))
+        .merge(public)
+        .merge(protected)
+        .merge(admin)
         .with_state(state);
 
     HttpAspects::new().apply(router)
@@ -126,34 +145,24 @@ async fn welcome_handler() -> axum::response::Html<&'static str> {
                 
                 <div class="endpoint-list">
                     <div class="endpoint">
+                        <span class="method post">POST</span>
+                        <span class="path">/auth/login</span>
+                        <span class="desc">로그인</span>
+                    </div>
+                    <div class="endpoint">
                         <span class="method get">GET</span>
                         <span class="path">/posts</span>
-                        <span class="desc">전체 포스트 조회</span>
+                        <span class="desc">전체 포스트 조회 (JWT)</span>
                     </div>
                     <div class="endpoint">
                         <span class="method post">POST</span>
                         <span class="path">/posts</span>
-                        <span class="desc">새 포스트 생성</span>
+                        <span class="desc">새 포스트 생성 (Editor+)</span>
                     </div>
                     <div class="endpoint">
                         <span class="method get">GET</span>
-                        <span class="path">/posts/:id</span>
-                        <span class="desc">특정 포스트 조회</span>
-                    </div>
-                    <div class="endpoint">
-                        <span class="method put">PUT</span>
-                        <span class="path">/posts/:id</span>
-                        <span class="desc">포스트 수정</span>
-                    </div>
-                    <div class="endpoint">
-                        <span class="method delete">DELETE</span>
-                        <span class="path">/posts/:id</span>
-                        <span class="desc">포스트 삭제</span>
-                    </div>
-                    <div class="endpoint">
-                        <span class="method post">POST</span>
-                        <span class="path">/posts/:id/publish</span>
-                        <span class="desc">초안 포스트 발행</span>
+                        <span class="path">/admin/users</span>
+                        <span class="desc">사용자 목록 (Admin)</span>
                     </div>
                 </div>
             </div>

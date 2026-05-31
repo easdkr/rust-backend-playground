@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use chrono::Utc;
+use libs::error::IntoStringErr;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder, Set};
 
 use super::post::{ActiveModel, Entity, Post};
@@ -37,14 +38,14 @@ impl PostRepository for SeaOrmPostRepository {
             .order_by_desc(super::post::Column::CreatedAt)
             .all(&self.db)
             .await
-            .map_err(|e| e.to_string())
+            .map_err_string()
     }
 
     async fn find_by_id(&self, id: i32) -> Result<Option<Post>, String> {
         Entity::find_by_id(id)
             .one(&self.db)
             .await
-            .map_err(|e| e.to_string())
+            .map_err_string()
     }
 
     async fn create(&self, title: String, content: String, status: String) -> Result<Post, String> {
@@ -55,7 +56,7 @@ impl PostRepository for SeaOrmPostRepository {
             created_at: Set(Utc::now()),
             ..Default::default()
         };
-        active.insert(&self.db).await.map_err(|e| e.to_string())
+        active.insert(&self.db).await.map_err_string()
     }
 
     async fn update(
@@ -72,14 +73,14 @@ impl PostRepository for SeaOrmPostRepository {
             status: Set(status),
             ..Default::default()
         };
-        active.update(&self.db).await.map_err(|e| e.to_string())
+        active.update(&self.db).await.map_err_string()
     }
 
     async fn delete(&self, id: i32) -> Result<bool, String> {
         let res = Entity::delete_by_id(id)
             .exec(&self.db)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err_string()?;
 
         Ok(res.rows_affected > 0)
     }
@@ -88,6 +89,6 @@ impl PostRepository for SeaOrmPostRepository {
         Entity::find()
             .count(&self.db)
             .await
-            .map_err(|e| e.to_string())
+            .map_err_string()
     }
 }

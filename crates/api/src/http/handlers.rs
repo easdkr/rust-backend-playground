@@ -3,13 +3,15 @@ use std::sync::Arc;
 use application::post::dto::{CreatePostCmd, PostDto, UpdatePostCmd};
 use application::post::error::PostError;
 use application::post::service::PostService;
+use application::user::Permission;
 use axum::{
     Json,
     extract::{Path, State},
 };
 
 use crate::error::{AppError, AppResult};
-use crate::http::extractors::ValidatedJson;
+use crate::http::extractors::{AuthenticatedUser, ValidatedJson};
+use crate::http::guards::check_permission;
 
 fn map_post_error(err: PostError) -> AppError {
     match err {
@@ -24,6 +26,7 @@ fn map_post_error(err: PostError) -> AppError {
 
 pub async fn list_posts(
     State(post_service): State<Arc<PostService>>,
+    _user: AuthenticatedUser,
 ) -> AppResult<Json<Vec<PostDto>>> {
     let posts = post_service.list().await.map_err(map_post_error)?;
     Ok(Json(posts.into_iter().map(PostDto::from).collect()))
@@ -31,14 +34,17 @@ pub async fn list_posts(
 
 pub async fn create_post(
     State(post_service): State<Arc<PostService>>,
+    user: AuthenticatedUser,
     ValidatedJson(payload): ValidatedJson<CreatePostCmd>,
 ) -> AppResult<Json<PostDto>> {
+    check_permission(&user.0, Permission::PostCreate)?;
     let post = post_service.create(payload).await.map_err(map_post_error)?;
     Ok(Json(PostDto::from(post)))
 }
 
 pub async fn get_post(
     State(post_service): State<Arc<PostService>>,
+    _user: AuthenticatedUser,
     Path(id): Path<i32>,
 ) -> AppResult<Json<PostDto>> {
     let post = post_service.get(id).await.map_err(map_post_error)?;
@@ -47,9 +53,11 @@ pub async fn get_post(
 
 pub async fn update_post(
     State(post_service): State<Arc<PostService>>,
+    user: AuthenticatedUser,
     Path(id): Path<i32>,
     ValidatedJson(payload): ValidatedJson<UpdatePostCmd>,
 ) -> AppResult<Json<PostDto>> {
+    check_permission(&user.0, Permission::PostUpdate)?;
     let post = post_service
         .update(id, payload)
         .await
@@ -59,16 +67,20 @@ pub async fn update_post(
 
 pub async fn publish_post(
     State(post_service): State<Arc<PostService>>,
+    user: AuthenticatedUser,
     Path(id): Path<i32>,
 ) -> AppResult<Json<PostDto>> {
+    check_permission(&user.0, Permission::PostPublish)?;
     let post = post_service.publish(id).await.map_err(map_post_error)?;
     Ok(Json(PostDto::from(post)))
 }
 
 pub async fn delete_post(
     State(post_service): State<Arc<PostService>>,
+    user: AuthenticatedUser,
     Path(id): Path<i32>,
 ) -> AppResult<Json<serde_json::Value>> {
+    check_permission(&user.0, Permission::PostDelete)?;
     post_service.delete(id).await.map_err(map_post_error)?;
 
     Ok(Json(serde_json::json!({

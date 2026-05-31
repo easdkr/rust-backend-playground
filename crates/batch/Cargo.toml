@@ -10,8 +10,8 @@ path = "src/main.rs"
 [dependencies]
 application = { path = "../application" }
 infrastructure = { path = "../infrastructure" }
+libs = { path = "../libs", features = ["telemetry"] }
 dotenvy.workspace = true
 tokio.workspace = true
 tokio-cron-scheduler.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true

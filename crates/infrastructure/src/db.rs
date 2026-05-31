@@ -1,8 +1,9 @@
 use std::time::Duration;
 
+use libs::env::{env_u32, env_u64};
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbErr, Schema};
 
-use crate::persistence::seaorm::post;
+use crate::persistence::seaorm::{post, user};
 
 pub async fn connect(db_url: &str) -> Result<DatabaseConnection, DbErr> {
     let mut options = ConnectOptions::new(db_url.to_owned());
@@ -62,20 +63,6 @@ fn timeout_from_ms_env(key: &str, default_ms: u64) -> String {
     format!("{}ms", env_u64(key, default_ms))
 }
 
-fn env_u32(key: &str, default: u32) -> u32 {
-    std::env::var(key)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
-}
-
-fn env_u64(key: &str, default: u64) -> u64 {
-    std::env::var(key)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
-}
-
 async fn setup_schema(db: &DatabaseConnection) -> Result<(), DbErr> {
     let builder = db.get_database_backend();
     let schema = Schema::new(builder);
@@ -85,6 +72,10 @@ async fn setup_schema(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     db.execute(builder.build(&stmt)).await?;
     migrate_posts_status(db).await?;
+
+    let mut users_stmt = schema.create_table_from_entity(user::Entity);
+    users_stmt.if_not_exists();
+    db.execute(builder.build(&users_stmt)).await?;
 
     Ok(())
 }

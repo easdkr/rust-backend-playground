@@ -9,6 +9,7 @@ async fn create_list_and_get_post() {
     let create = ctx
         .server
         .post("/posts")
+        .add_header("Authorization", ctx.bearer())
         .json(&serde_json::json!({
             "title": "E2E 포스트",
             "content": "본문 내용"
@@ -22,13 +23,21 @@ async fn create_list_and_get_post() {
     assert_eq!(created["status"], "draft");
     let id = created["id"].as_i64().expect("post id");
 
-    let list = ctx.server.get("/posts").await;
+    let list = ctx
+        .server
+        .get("/posts")
+        .add_header("Authorization", ctx.bearer())
+        .await;
     list.assert_status_ok();
     let posts: Vec<serde_json::Value> = list.json();
     assert_eq!(posts.len(), 1);
     assert_eq!(posts[0]["id"], id);
 
-    let get = ctx.server.get(&format!("/posts/{id}")).await;
+    let get = ctx
+        .server
+        .get(&format!("/posts/{id}"))
+        .add_header("Authorization", ctx.bearer())
+        .await;
     get.assert_status_ok();
     let fetched: serde_json::Value = get.json();
     assert_eq!(fetched["title"], "E2E 포스트");
@@ -42,6 +51,7 @@ async fn update_post() {
     let create = ctx
         .server
         .post("/posts")
+        .add_header("Authorization", ctx.bearer())
         .json(&serde_json::json!({
             "title": "수정 전",
             "content": "원본"
@@ -55,6 +65,7 @@ async fn update_post() {
     let update = ctx
         .server
         .put(&format!("/posts/{id}"))
+        .add_header("Authorization", ctx.bearer())
         .json(&serde_json::json!({
             "title": "수정 후",
             "content": "변경됨"
@@ -76,6 +87,7 @@ async fn publish_post() {
     let create = ctx
         .server
         .post("/posts")
+        .add_header("Authorization", ctx.bearer())
         .json(&serde_json::json!({
             "title": "발행 대상",
             "content": "초안"
@@ -86,13 +98,21 @@ async fn publish_post() {
         .as_i64()
         .expect("post id");
 
-    let publish = ctx.server.post(&format!("/posts/{id}/publish")).await;
+    let publish = ctx
+        .server
+        .post(&format!("/posts/{id}/publish"))
+        .add_header("Authorization", ctx.bearer())
+        .await;
     publish.assert_status_ok();
 
     let published: serde_json::Value = publish.json();
     assert_eq!(published["status"], "published");
 
-    let republish = ctx.server.post(&format!("/posts/{id}/publish")).await;
+    let republish = ctx
+        .server
+        .post(&format!("/posts/{id}/publish"))
+        .add_header("Authorization", ctx.bearer())
+        .await;
     republish.assert_status_bad_request();
 }
 
@@ -104,6 +124,7 @@ async fn delete_post() {
     let create = ctx
         .server
         .post("/posts")
+        .add_header("Authorization", ctx.bearer())
         .json(&serde_json::json!({
             "title": "삭제 대상",
             "content": "임시"
@@ -114,13 +135,21 @@ async fn delete_post() {
         .as_i64()
         .expect("post id");
 
-    let delete = ctx.server.delete(&format!("/posts/{id}")).await;
+    let delete = ctx
+        .server
+        .delete(&format!("/posts/{id}"))
+        .add_header("Authorization", ctx.bearer())
+        .await;
     delete.assert_status_ok();
 
     let body: serde_json::Value = delete.json();
     assert_eq!(body["success"], true);
 
-    let get = ctx.server.get(&format!("/posts/{id}")).await;
+    let get = ctx
+        .server
+        .get(&format!("/posts/{id}"))
+        .add_header("Authorization", ctx.bearer())
+        .await;
     get.assert_status_not_found();
 }
 
@@ -132,6 +161,7 @@ async fn create_post_rejects_empty_title() {
     let response = ctx
         .server
         .post("/posts")
+        .add_header("Authorization", ctx.bearer())
         .json(&serde_json::json!({
             "title": "   ",
             "content": "본문"
@@ -146,7 +176,11 @@ async fn create_post_rejects_empty_title() {
 async fn get_nonexistent_post_returns_not_found() {
     let ctx = E2eContext::new().await;
 
-    let response = ctx.server.get("/posts/999999").await;
+    let response = ctx
+        .server
+        .get("/posts/999999")
+        .add_header("Authorization", ctx.bearer())
+        .await;
 
     response.assert_status_not_found();
 }

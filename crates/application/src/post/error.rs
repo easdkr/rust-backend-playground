@@ -1,8 +1,30 @@
+use crate::error::DomainError;
+
 #[derive(Debug)]
 pub enum PostError {
     NotFound(i32),
     Domain(String),
     Internal(String),
+}
+
+impl std::fmt::Display for PostError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PostError::NotFound(id) => write!(f, "Post with id {id} not found"),
+            PostError::Domain(msg) => write!(f, "{msg}"),
+            PostError::Internal(msg) => write!(f, "Internal error: {msg}"),
+        }
+    }
+}
+
+impl DomainError for PostError {
+    fn internal(msg: impl Into<String>) -> Self {
+        PostError::Internal(msg.into())
+    }
+
+    fn is_not_found(&self) -> bool {
+        matches!(self, PostError::NotFound(_))
+    }
 }
 
 impl PostError {

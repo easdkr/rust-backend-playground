@@ -4,7 +4,12 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+argon2.workspace = true
+async-trait.workspace = true
+libs = { path = "../libs" }
 chrono.workspace = true
 infrastructure = { path = "../infrastructure" }
+jsonwebtoken.workspace = true
+rand.workspace = true
 serde.workspace = true
 validator.workspace = true

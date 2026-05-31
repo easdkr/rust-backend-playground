@@ -1,13 +1,36 @@
 use async_trait::async_trait;
 use axum::{
     Json,
-    extract::{FromRequest, Request},
+    extract::{FromRequest, FromRequestParts, Request},
+    http::request::Parts,
 };
 use serde::de::DeserializeOwned;
 use validator::Validate;
 
+use application::user::AccessTokenClaims;
+
 use crate::error::AppError;
 use crate::http::validation::format_validation_errors;
+
+/// Authenticated user claims populated by JWT middleware.
+pub struct AuthenticatedUser(pub AccessTokenClaims);
+
+#[async_trait]
+impl<S> FromRequestParts<S> for AuthenticatedUser
+where
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<AccessTokenClaims>()
+            .cloned()
+            .map(AuthenticatedUser)
+            .ok_or_else(|| AppError::Unauthorized("Not authenticated".to_string()))
+    }
+}
 
 /// JSON body extractor that maps parse failures to [`AppError::BadRequest`].
 pub struct AppJson<T>(pub T);

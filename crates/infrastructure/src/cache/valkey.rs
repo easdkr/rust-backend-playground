@@ -1,18 +1,17 @@
 use redis::AsyncCommands;
-use redis::aio::ConnectionManager;
+
+use libs::error::IntoStringErr;
+use libs::redis::connect_manager;
 
 const POST_COUNT_KEY: &str = "playground:posts:count";
 
 pub struct ValkeyCache {
-    conn: ConnectionManager,
+    conn: redis::aio::ConnectionManager,
 }
 
 impl ValkeyCache {
     pub async fn connect(url: &str) -> Result<Self, String> {
-        let client = redis::Client::open(url).map_err(|e| e.to_string())?;
-        let conn = ConnectionManager::new(client)
-            .await
-            .map_err(|e| e.to_string())?;
+        let conn = connect_manager(url).await?;
         Ok(Self { conn })
     }
 
@@ -20,6 +19,6 @@ impl ValkeyCache {
         self.conn
             .set(POST_COUNT_KEY, count)
             .await
-            .map_err(|e| e.to_string())
+            .map_err_string()
     }
 }
