@@ -1,20 +1,12 @@
 use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError};
 
+use crate::validation;
 use super::entity::Post;
-
-fn non_empty_trimmed(value: &str) -> Result<(), ValidationError> {
-    if value.trim().is_empty() {
-        let mut err = ValidationError::new("non_empty_trimmed");
-        err.message = Some("must not be empty".into());
-        return Err(err);
-    }
-    Ok(())
-}
 
 fn validate_update_post_cmd(cmd: &UpdatePostCmd) -> Result<(), ValidationError> {
     if let Some(ref title) = cmd.title {
-        non_empty_trimmed(title)?;
+        validation::non_empty_trimmed(title)?;
     }
     Ok(())
 }
@@ -22,7 +14,7 @@ fn validate_update_post_cmd(cmd: &UpdatePostCmd) -> Result<(), ValidationError> 
 /// class-validator처럼 필드/구조체에 규칙을 선언합니다 (`#[validate(...)]`).
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreatePostCmd {
-    #[validate(custom(function = "non_empty_trimmed"))]
+    #[validate(custom(function = "validation::non_empty_trimmed"))]
     pub title: String,
     pub content: String,
 }
