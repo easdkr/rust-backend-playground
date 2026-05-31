@@ -3,6 +3,7 @@ use utoipa::ToSchema;
 use validator::{Validate, ValidationError};
 
 use super::entity::Post;
+use crate::pagination;
 use crate::validation;
 
 fn validate_update_post_cmd(cmd: &UpdatePostCmd) -> Result<(), ValidationError> {
@@ -33,24 +34,26 @@ pub struct UpdatePostCmd {
     pub content: Option<String>,
 }
 
+/// Post 목록 조회용 페이징 설정
+pub const POST_DEFAULT_LIMIT: usize = 20;
+pub const POST_MIN_LIMIT: usize = 1;
+pub const POST_MAX_LIMIT: usize = 100;
+
+fn default_post_limit() -> usize {
+    POST_DEFAULT_LIMIT
+}
+
 #[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ListPostsQuery {
     pub cursor: Option<i32>,
-    #[serde(default = "default_limit")]
+    #[serde(default = "default_post_limit")]
     pub limit: usize,
-}
-
-fn default_limit() -> usize {
-    20
 }
 
 impl ListPostsQuery {
     pub fn validate(&self) -> Result<(), String> {
-        if self.limit == 0 || self.limit > 100 {
-            return Err("limit must be between 1 and 100".to_string());
-        }
-        Ok(())
+        pagination::validate_limit(self.limit, POST_MIN_LIMIT, POST_MAX_LIMIT)
     }
 }
 
