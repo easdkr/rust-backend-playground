@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use validator::{Validate, ValidationError};
 
-use crate::validation;
 use super::entity::Post;
+use crate::validation;
 
 fn validate_update_post_cmd(cmd: &UpdatePostCmd) -> Result<(), ValidationError> {
     if let Some(ref title) = cmd.title {
@@ -12,7 +13,7 @@ fn validate_update_post_cmd(cmd: &UpdatePostCmd) -> Result<(), ValidationError> 
 }
 
 /// class-validator처럼 필드/구조체에 규칙을 선언합니다 (`#[validate(...)]`).
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreatePostCmd {
     #[validate(custom(function = "validation::non_empty_trimmed"))]
     pub title: String,
@@ -25,14 +26,35 @@ impl CreatePostCmd {
     }
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 #[validate(schema(function = "validate_update_post_cmd"))]
 pub struct UpdatePostCmd {
     pub title: Option<String>,
     pub content: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ListPostsQuery {
+    pub cursor: Option<i32>,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+}
+
+fn default_limit() -> usize {
+    20
+}
+
+impl ListPostsQuery {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.limit == 0 || self.limit > 100 {
+            return Err("limit must be between 1 and 100".to_string());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PostDto {
     pub id: i32,
     pub title: String,

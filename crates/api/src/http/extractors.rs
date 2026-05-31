@@ -90,9 +90,7 @@ where
 fn map_post_error(err: PostError) -> AppError {
     match err {
         PostError::NotFound(id) => AppError::NotFound(format!("Post with id {id} not found")),
-        PostError::OwnershipError => {
-            AppError::Forbidden("Not the owner of this post".to_string())
-        }
+        PostError::OwnershipError => AppError::Forbidden("Not the owner of this post".to_string()),
         PostError::Domain(msg) => AppError::BadRequest(msg),
         PostError::Internal(msg) => {
             tracing::error!("Post operation failed: {msg}");

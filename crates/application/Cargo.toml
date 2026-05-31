@@ -13,3 +13,4 @@ jsonwebtoken.workspace = true
 rand.workspace = true
 serde.workspace = true
 validator.workspace = true
+utoipa.workspace = true

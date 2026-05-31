@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
+use crate::pagination::CursorPage;
 use infrastructure::persistence::seaorm::post_repository::PostRepository;
 
-use super::dto::{CreatePostCmd, UpdatePostCmd};
+use super::dto::{CreatePostCmd, ListPostsQuery, PostDto, UpdatePostCmd};
 use super::entity::Post;
 use super::error::PostError;
 use super::mapper::domain_from_record;
@@ -39,6 +40,25 @@ impl PostService {
     pub async fn list(&self) -> Result<Vec<Post>, PostError> {
         let records = self.repo.find_all().await.map_err(PostError::repo)?;
         records.into_iter().map(domain_from_record).collect()
+    }
+
+    pub async fn find_many(&self, query: ListPostsQuery) -> Result<CursorPage<PostDto>, PostError> {
+        query.validate().map_err(PostError::Domain)?;
+
+        let result = self
+            .repo
+            .find_many(query.cursor, query.limit)
+            .await
+            .map_err(PostError::repo)?;
+
+        let posts: Result<Vec<_>, _> = result.data.into_iter().map(domain_from_record).collect();
+        let posts = posts?;
+
+        Ok(CursorPage::new(
+            posts.into_iter().map(|p| p.into()).collect(),
+            result.next_cursor,
+            result.has_more,
+        ))
     }
 
     pub async fn get(&self, id: i32) -> Result<Post, PostError> {

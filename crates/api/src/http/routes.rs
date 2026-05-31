@@ -4,11 +4,66 @@ use axum::{
     routing::{get, post},
 };
 use libs::http::HttpAspects;
+use utoipa::OpenApi;
+use utoipa_scalar::{Scalar, Servable};
 
 use super::auth;
 use super::handlers;
 use super::middleware::auth::{jwt_auth_middleware, require_admin_middleware};
 use crate::http::state::AppState;
+
+#[derive(OpenApi)]
+#[openapi(
+    info(
+        title = "Rust Backend Playground API",
+        description = "Tokio + Axum + SeaORM(PostgreSQL) + Valkey 기반 API",
+        version = "0.1.0",
+        contact(name = "API Support", email = "support@example.com")
+    ),
+    servers(
+        (url = "http://localhost:3000", description = "Local development server")
+    ),
+    paths(
+        handlers::list_posts,
+        handlers::create_post,
+        handlers::get_post,
+        handlers::update_post,
+        handlers::publish_post,
+        handlers::delete_post,
+    ),
+    components(
+        schemas(
+            application::post::dto::PostDto,
+            application::post::dto::CreatePostCmd,
+            application::post::dto::UpdatePostCmd,
+            application::post::dto::ListPostsQuery,
+            application::pagination::CursorPage<application::post::dto::PostDto>,
+        )
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    modifiers(&SecurityAddon)
+)]
+pub struct ApiDoc;
+
+struct SecurityAddon;
+
+impl utoipa::Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "bearer_auth",
+                utoipa::openapi::security::SecurityScheme::Http(
+                    utoipa::openapi::security::HttpBuilder::new()
+                        .scheme(utoipa::openapi::security::HttpAuthScheme::Bearer)
+                        .bearer_format("JWT")
+                        .build(),
+                ),
+            );
+        }
+    }
+}
 
 pub fn configure_routes(state: AppState) -> Router {
     let public = Router::new()
@@ -35,8 +90,11 @@ pub fn configure_routes(state: AppState) -> Router {
         .route_layer(from_fn_with_state(state.clone(), require_admin_middleware))
         .route_layer(from_fn_with_state(state.clone(), jwt_auth_middleware));
 
+    let scalar = Scalar::with_url("/scalar", ApiDoc::openapi());
+
     let router = Router::new()
         .route("/", get(welcome_handler))
+        .merge(scalar)
         .merge(public)
         .merge(protected)
         .merge(admin)

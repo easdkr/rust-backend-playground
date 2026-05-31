@@ -16,9 +16,6 @@ impl ValkeyCache {
     }
 
     pub async fn set_post_count(&mut self, count: u64) -> Result<(), String> {
-        self.conn
-            .set(POST_COUNT_KEY, count)
-            .await
-            .map_err_string()
+        self.conn.set(POST_COUNT_KEY, count).await.map_err_string()
     }
 }
