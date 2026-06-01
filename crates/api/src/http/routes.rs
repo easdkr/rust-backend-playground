@@ -30,14 +30,28 @@ use crate::http::state::AppState;
         handlers::update_post,
         handlers::publish_post,
         handlers::delete_post,
+        handlers::list_comments,
+        handlers::create_comment,
+        handlers::create_comment_reply,
+        handlers::get_comment,
+        handlers::update_comment,
+        handlers::delete_comment,
     ),
     components(
         schemas(
             application::post::dto::PostDto,
+            application::post::dto::PostDetailDto,
             application::post::dto::CreatePostCmd,
             application::post::dto::UpdatePostCmd,
             application::post::dto::ListPostsQuery,
             application::pagination::CursorPage<application::post::dto::PostDto>,
+            application::comment::dto::CommentDto,
+            application::comment::dto::CommentThreadDto,
+            application::comment::dto::CommentReplyDto,
+            application::comment::dto::CreateCommentCmd,
+            application::comment::dto::UpdateCommentCmd,
+            application::comment::dto::ListCommentsQuery,
+            application::pagination::CursorPage<application::comment::dto::CommentThreadDto>,
         )
     ),
     security(
@@ -75,6 +89,20 @@ pub fn configure_routes(state: AppState) -> Router {
         .route(
             "/posts",
             get(handlers::list_posts).post(handlers::create_post),
+        )
+        .route(
+            "/posts/:post_id/comments",
+            get(handlers::list_comments).post(handlers::create_comment),
+        )
+        .route(
+            "/posts/:post_id/comments/:comment_id",
+            get(handlers::get_comment)
+                .put(handlers::update_comment)
+                .delete(handlers::delete_comment),
+        )
+        .route(
+            "/posts/:post_id/comments/:comment_id/replies",
+            post(handlers::create_comment_reply),
         )
         .route(
             "/posts/:id",

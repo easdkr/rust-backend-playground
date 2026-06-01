@@ -15,7 +15,7 @@ async fn create_list_and_get_post() {
             "content": "본문 내용"
         }))
         .await;
-    create.assert_status_ok();
+    create.assert_status_success();
 
     let created: serde_json::Value = create.json();
     assert_eq!(created["title"], "E2E 포스트");
@@ -29,9 +29,9 @@ async fn create_list_and_get_post() {
         .add_header("Authorization", ctx.bearer())
         .await;
     list.assert_status_ok();
-    let posts: Vec<serde_json::Value> = list.json();
-    assert_eq!(posts.len(), 1);
-    assert_eq!(posts[0]["id"], id);
+    let posts: serde_json::Value = list.json();
+    assert_eq!(posts["data"].as_array().expect("posts").len(), 1);
+    assert_eq!(posts["data"][0]["id"], id);
 
     let get = ctx
         .server
@@ -41,6 +41,8 @@ async fn create_list_and_get_post() {
     get.assert_status_ok();
     let fetched: serde_json::Value = get.json();
     assert_eq!(fetched["title"], "E2E 포스트");
+    assert_eq!(fetched["comment_count"], 0);
+    assert_eq!(fetched["has_more_comments"], false);
 }
 
 #[tokio::test]
@@ -57,7 +59,7 @@ async fn update_post() {
             "content": "원본"
         }))
         .await;
-    create.assert_status_ok();
+    create.assert_status_success();
     let id = create.json::<serde_json::Value>()["id"]
         .as_i64()
         .expect("post id");
@@ -93,7 +95,7 @@ async fn publish_post() {
             "content": "초안"
         }))
         .await;
-    create.assert_status_ok();
+    create.assert_status_success();
     let id = create.json::<serde_json::Value>()["id"]
         .as_i64()
         .expect("post id");
@@ -130,7 +132,7 @@ async fn delete_post() {
             "content": "임시"
         }))
         .await;
-    create.assert_status_ok();
+    create.assert_status_success();
     let id = create.json::<serde_json::Value>()["id"]
         .as_i64()
         .expect("post id");

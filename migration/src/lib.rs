@@ -3,6 +3,7 @@ pub use sea_orm_migration::*;
 mod m20240101_000001_create_users;
 mod m20240101_000002_create_posts;
 mod m20240101_000003_add_user_id_to_posts;
+mod m20240101_000004_create_comments;
 #[path = "migrator.rs"]
 mod migration_registry;
 
