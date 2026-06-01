@@ -1,127 +1,42 @@
 # CLAUDE.md
 
-Project instructions for Claude Code and other Anthropic tooling.
+AIR3 rust-agent-rules webchecked=2026-06-01
+SRC:RustAPI,StyleGuide,Clippy,AsyncBook,PerfBook,RustPatterns,Nomicon,CargoBook
+B=origin/main;BRANCH_RENAME!user;COMMIT/PUSH!user
+DISCOVER:trust Cargo.toml/module tree/tests over this file for implementation facts
 
-> Shared agent rules also live in [AGENTS.md](./AGENTS.md). Prefer that file as the single source of truth when both are present.
+SCOPE:min_diff;read touched crate manifests first;preserve existing architecture;no drive-by refactor;no README!user;no secrets/.env;ignore legacy root src unless user says otherwise
+RUN:deps="docker compose up -d";api="cargo run";batch="cargo run -p batch";stack="docker compose --profile app up -d --build"
+VFY:fmt="cargo fmt --all --check";check="cargo check --workspace --all-targets";test="cargo test --workspace";lint="cargo clippy --workspace --all-targets -- -D warnings"
 
-## Quick context
+FMT:rustfmt default;4sp;100col;spaces not tabs;trailing commas multiline;outer doc comments;one derive attr;no manual style wars;format before final
+CARGO:centralize shared deps in workspace if pattern exists;member deps use workspace=true when available;avoid new deps if std/local helper enough;min features;intentional Cargo.lock;do not change MSRV/edition/profile casually
+CLIPPY:fix correctness/suspicious/perf;local allow only narrow+reason;style allow rare;pedantic/restriction/nursery cherry-pick only;no blanket allow to make CI green
 
-Layered Rust workspace: **Tokio · Axum 0.7 · SeaORM 1.1 · PostgreSQL 17 · Valkey 8**.
+NAMING:RFC430 casing;getters no get_ unless needed;as_=cheap ref/view,to_=cheap owned/borrow copy,into_=consume;iter/iter_mut/into_iter exact;feature names meaningful;consistent word order
+API:constructors inherent new;Default if natural zero/empty config;builders for many/optional params;methods when receiver is clear;no out params;operator overload unsurprising;Deref only smart-pointer-like
+TRAITS:derive/impl Debug,Clone,Eq,Hash,Ord,Default,Display selectively;public error types Display+Debug(+Error if std boundary);From/TryFrom/AsRef/AsMut over ad-hoc conversion;serde only at IO/DTO boundaries
+FLEX:accept impl Trait/generics when it lowers assumptions;prefer &str/&[T]/Path over owned args;return impl Iterator when no allocation needed;expose intermediate results when it avoids duplicate work;object-safe traits if dyn use likely
+FUTURE:private fields by default;sealed traits if downstream impls would constrain evolution;newtypes hide representation;avoid duplicating derive bounds;non_exhaustive for public enums when future variants plausible
 
-```
-crates/
-├── infrastructure/   # persistence, cache, db
-├── application/      # services, DTOs, validation
-├── api/              # HTTP handlers & routes
-├── server/           # API binary (cargo run)
-└── batch/            # periodic post-count worker
-```
+OWNERSHIP:borrow before clone;clone deliberately not to appease borrow checker;clone Arc/Rc explicitly at ownership boundary;use mem::take/replace/split scopes to satisfy borrows;avoid needless lifetime params
+ERROR:Result recoverable;Option absence-only;? over match boilerplate;panic/unwrap/expect only tests/prototypes/proven invariants with message;map errors at layer boundaries;do not leak internals to users
+TYPES:encode invariants in types;newtype IDs/secrets/units;avoid bool/Option flag params;bitflags for combinable flags;validate untrusted input at edge;prefer NonZero/Duration/PathBuf/etc over primitive strings/ints when fitting
+MATCH:prefer exhaustive match over stringly branching;use let-else/? for early exits;avoid partial state mutation before fallible steps unless rollback/transaction exists
 
-Work only under `crates/`. The root `src/` tree is legacy and must not be modified.
+ASYNC:futures do nothing until awaited/spawned;never block async worker;sync/cpu work=>spawn_blocking;no std::thread::sleep in async;no std::sync guard across await;prefer tokio sync in async;avoid nested runtimes/block_on in async
+TASKS:spawned futures Send+'static unless LocalSet;JoinHandle awaited/logged/aborted intentionally;propagate cancellation;select! branches cancellation-safe;timeout external IO when local pattern exists;backpressure over unbounded fanout
+CONCURRENCY:Arc for shared cross-task/thread state;Rc/RefCell only single-thread local;Mutex/RwLock scope tiny;avoid nested locks;prefer message passing for ownership transfer;manual Send/Sync unsafe only with proof
 
-## Before making changes
+PERF:measure before complex optimization;avoid N+1 IO/queries;paginate/stream large data;avoid collect-then-iterate;preallocate Vec/String/Map when size known;reuse buffers in hot loops;format! allocates;Cow for mixed borrowed/owned if worth it
+ALLOC:heap clone usually allocates except Arc/Rc;to_string/to_owned may allocate;SmallVec/ArrayVec only after profiling;do not trade clarity for micro-opts outside hot paths
 
-1. Read the relevant module in each layer (e.g. `post` spans all crates).
-2. Run `cargo check` after edits; use `cargo clippy` when touching non-trivial logic.
-3. Ensure `docker compose up -d` if you need live DB/Valkey for manual testing.
+HTTP:handlers/controllers thin;extract/validate/map at edge;business logic outside transport;return concrete error convertible to response;log internals with tracing;client messages sanitized;authz close to protected action
+DB:migrations for schema;transactions for multi-write invariants;parameterized query/ORM builders;raw SQL only clearer/needed+tested;avoid long transactions across await-heavy external work;no generated entity edits unless project pattern
+SEC:no log tokens/passwords/secrets/PII;fail closed;constant-time helpers for secret compare if present;env defaults local-dev only;redact debug output;least privilege for external calls
+OBS:tracing over println;structured fields;instrument boundaries not hot loops;include IDs/status not secrets;errors logged once at boundary
 
-## Layer responsibilities
-
-| Layer | May import | Must not import |
-|:---|:---|:---|
-| `infrastructure` | sea-orm, redis, chrono | axum, application, api |
-| `application` | infrastructure | axum, api |
-| `api` | application, axum | server, batch |
-| `server`, `batch` | application, infrastructure, api (server) | — |
-
-## Patterns to follow
-
-### Service (application)
-
-```rust
-pub struct PostService {
-    repo: Arc<dyn PostRepository>,
-}
-
-impl PostService {
-    pub async fn create(&self, cmd: CreatePostCmd) -> Result<PostDto, String> {
-        validate_title(&cmd.title)?;
-        let saved = self.repo.create(cmd.title, cmd.content).await?;
-        Ok(PostDto::from(saved))
-    }
-}
-```
-
-### Handler (api)
-
-```rust
-pub async fn create_post(
-    State(state): State<AppState>,
-    Json(payload): Json<CreatePostCmd>,
-) -> AppResult<Json<PostDto>> {
-    let post = state.post_service.create(payload).await.map_err(AppError::BadRequest)?;
-    Ok(Json(post))
-}
-```
-
-### Wiring (server)
-
-```rust
-let post_repo: Arc<dyn PostRepository> = Arc::new(SeaOrmPostRepository::new(db_conn));
-let post_service = Arc::new(PostService::new(post_repo));
-let app_state = AppState { post_service };
-let app = configure_routes(app_state);
-```
-
-## Common tasks
-
-### Run locally
-
-```bash
-cp .env.example .env
-docker compose up -d
-cargo run                  # API on :3000
-cargo run -p batch         # background worker
-```
-
-### Add workspace dependency
-
-Add once in root `Cargo.toml` under `[workspace.dependencies]`, then reference in crate `Cargo.toml`:
-
-```toml
-some-crate.workspace = true
-```
-
-### Docker full stack
-
-```bash
-docker compose --profile app up -d --build
-```
-
-## Guardrails
-
-- Never commit `.env` or secrets.
-- Keep HTTP concerns out of `application` and `infrastructure`.
-- Preserve `Result<_, String>` in services/repos unless migrating the whole stack to a typed error.
-- Use `tracing` for logs; default filters are set in each binary's `main.rs`.
-- Avoid drive-by refactors, extra abstractions, or README updates unless asked.
-
-## Verification checklist
-
-After substantive changes:
-
-```bash
-cargo fmt
-cargo check --workspace
-cargo clippy --workspace -- -D warnings   # when feasible
-cargo test --workspace                    # if tests exist
-```
-
-Manual smoke test (API running):
-
-```bash
-curl -X POST http://127.0.0.1:3000/posts \
-  -H "Content-Type: application/json" \
-  -d '{"title":"test","content":"hello"}'
-curl http://127.0.0.1:3000/posts
-```
+TEST:unit tests near pure/domain code;tests/ for integration;doc tests for public examples;deterministic clocks/randomness/ports;no live services unless existing harness;regression test before fix when feasible;assert behavior not implementation
+DOCS:comment why/invariants/tradeoffs;rustdoc public reusable API;docs mention errors/panics/safety;examples use ? not unwrap;keep comments current or delete
+MACROS:avoid unless clear win;input syntax mirrors output;compose with attrs/visibility;hygiene;prefer functions/traits first
+UNSAFE:forbid unless user explicitly asks or existing module requires;small unsafe blocks;private module boundary;document SAFETY invariants;safe wrapper;tests/Miri if available;never manual Send/Sync without invariant proof

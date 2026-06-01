@@ -1,114 +1,42 @@
 # AGENTS.md
 
-AI coding agents working in this repository should follow these instructions.
+AIR3 rust-agent-rules webchecked=2026-06-01
+SRC:RustAPI,StyleGuide,Clippy,AsyncBook,PerfBook,RustPatterns,Nomicon,CargoBook
+B=origin/main;BRANCH_RENAME!user;COMMIT/PUSH!user
+DISCOVER:trust Cargo.toml/module tree/tests over this file for implementation facts
 
-## Project overview
+SCOPE:min_diff;read touched crate manifests first;preserve existing architecture;no drive-by refactor;no README!user;no secrets/.env;ignore legacy root src unless user says otherwise
+RUN:deps="docker compose up -d";api="cargo run";batch="cargo run -p batch";stack="docker compose --profile app up -d --build"
+VFY:fmt="cargo fmt --all --check";check="cargo check --workspace --all-targets";test="cargo test --workspace";lint="cargo clippy --workspace --all-targets -- -D warnings"
 
-Rust backend playground: **Tokio + Axum + SeaORM (PostgreSQL 17) + Valkey 8**.
+FMT:rustfmt default;4sp;100col;spaces not tabs;trailing commas multiline;outer doc comments;one derive attr;no manual style wars;format before final
+CARGO:centralize shared deps in workspace if pattern exists;member deps use workspace=true when available;avoid new deps if std/local helper enough;min features;intentional Cargo.lock;do not change MSRV/edition/profile casually
+CLIPPY:fix correctness/suspicious/perf;local allow only narrow+reason;style allow rare;pedantic/restriction/nursery cherry-pick only;no blanket allow to make CI green
 
-Cargo workspace with layered crates. Active code lives under `crates/` — ignore the legacy root `src/` directory.
+NAMING:RFC430 casing;getters no get_ unless needed;as_=cheap ref/view,to_=cheap owned/borrow copy,into_=consume;iter/iter_mut/into_iter exact;feature names meaningful;consistent word order
+API:constructors inherent new;Default if natural zero/empty config;builders for many/optional params;methods when receiver is clear;no out params;operator overload unsurprising;Deref only smart-pointer-like
+TRAITS:derive/impl Debug,Clone,Eq,Hash,Ord,Default,Display selectively;public error types Display+Debug(+Error if std boundary);From/TryFrom/AsRef/AsMut over ad-hoc conversion;serde only at IO/DTO boundaries
+FLEX:accept impl Trait/generics when it lowers assumptions;prefer &str/&[T]/Path over owned args;return impl Iterator when no allocation needed;expose intermediate results when it avoids duplicate work;object-safe traits if dyn use likely
+FUTURE:private fields by default;sealed traits if downstream impls would constrain evolution;newtypes hide representation;avoid duplicating derive bounds;non_exhaustive for public enums when future variants plausible
 
-| Crate | Role |
-|:---|:---|
-| `infrastructure` | DB connection, SeaORM entities/repos, Valkey cache |
-| `application` | Use cases, DTOs, input validation, batch logic |
-| `api` | HTTP handlers, routing, API error mapping |
-| `server` | HTTP binary entrypoint (`default-members`) |
-| `batch` | Background worker binary |
+OWNERSHIP:borrow before clone;clone deliberately not to appease borrow checker;clone Arc/Rc explicitly at ownership boundary;use mem::take/replace/split scopes to satisfy borrows;avoid needless lifetime params
+ERROR:Result recoverable;Option absence-only;? over match boilerplate;panic/unwrap/expect only tests/prototypes/proven invariants with message;map errors at layer boundaries;do not leak internals to users
+TYPES:encode invariants in types;newtype IDs/secrets/units;avoid bool/Option flag params;bitflags for combinable flags;validate untrusted input at edge;prefer NonZero/Duration/PathBuf/etc over primitive strings/ints when fitting
+MATCH:prefer exhaustive match over stringly branching;use let-else/? for early exits;avoid partial state mutation before fallible steps unless rollback/transaction exists
 
-## Dependency rules
+ASYNC:futures do nothing until awaited/spawned;never block async worker;sync/cpu work=>spawn_blocking;no std::thread::sleep in async;no std::sync guard across await;prefer tokio sync in async;avoid nested runtimes/block_on in async
+TASKS:spawned futures Send+'static unless LocalSet;JoinHandle awaited/logged/aborted intentionally;propagate cancellation;select! branches cancellation-safe;timeout external IO when local pattern exists;backpressure over unbounded fanout
+CONCURRENCY:Arc for shared cross-task/thread state;Rc/RefCell only single-thread local;Mutex/RwLock scope tiny;avoid nested locks;prefer message passing for ownership transfer;manual Send/Sync unsafe only with proof
 
-Respect crate boundaries. Do not introduce circular dependencies.
+PERF:measure before complex optimization;avoid N+1 IO/queries;paginate/stream large data;avoid collect-then-iterate;preallocate Vec/String/Map when size known;reuse buffers in hot loops;format! allocates;Cow for mixed borrowed/owned if worth it
+ALLOC:heap clone usually allocates except Arc/Rc;to_string/to_owned may allocate;SmallVec/ArrayVec only after profiling;do not trade clarity for micro-opts outside hot paths
 
-```
-server / batch  →  api (server only)  →  application  →  infrastructure
-```
+HTTP:handlers/controllers thin;extract/validate/map at edge;business logic outside transport;return concrete error convertible to response;log internals with tracing;client messages sanitized;authz close to protected action
+DB:migrations for schema;transactions for multi-write invariants;parameterized query/ORM builders;raw SQL only clearer/needed+tested;avoid long transactions across await-heavy external work;no generated entity edits unless project pattern
+SEC:no log tokens/passwords/secrets/PII;fail closed;constant-time helpers for secret compare if present;env defaults local-dev only;redact debug output;least privilege for external calls
+OBS:tracing over println;structured fields;instrument boundaries not hot loops;include IDs/status not secrets;errors logged once at boundary
 
-- **`infrastructure`**: SeaORM, Redis/Valkey, `db::connect`. No Axum or HTTP code.
-- **`application`**: Business logic and DTOs. Depends on `infrastructure` for repository traits and models.
-- **`api`**: Thin HTTP layer. Handlers delegate to `PostService`; map errors via `AppError`.
-- **`server` / `batch`**: Wire dependencies (`Arc<dyn PostRepository>`, services) and run binaries.
-
-When adding a new domain feature, follow the existing `post` module layout in each crate.
-
-## Commands
-
-```bash
-# Start DB + Valkey only (local Rust dev)
-docker compose up -d
-
-# Run API server (workspace root)
-cargo run
-cargo run --release
-
-# Run batch worker
-cargo run -p batch
-
-# Full stack in containers
-docker compose --profile app up -d --build
-
-# Check / test / lint
-cargo check
-cargo test
-cargo clippy -- -D warnings
-cargo fmt --check
-```
-
-Copy `.env.example` to `.env` before local runs. Never commit `.env`.
-
-## Environment variables
-
-| Variable | Default (if unset) | Used by |
-|:---|:---|:---|
-| `DATABASE_URL` | `postgres://postgres:postgrespassword@127.0.0.1:5433/playground` | server, batch |
-| `VALKEY_URL` | none | batch (optional cache sync) |
-| `HOST` | `127.0.0.1` | server |
-| `PORT` | `3000` | server |
-| `RUST_LOG` | crate-specific filter in `main.rs` | server, batch |
-
-## Coding conventions
-
-### Rust style
-
-- Edition **2024**, stable toolchain.
-- Shared deps go in root `[workspace.dependencies]`; crate `Cargo.toml` uses `{ workspace = true }`.
-- Prefer `tracing` over `println!` for runtime logs.
-- Use `async_trait` for repository traits; implementations return `Result<_, String>` (existing pattern).
-- Keep handlers thin: extract state → call service → map to JSON/`AppError`.
-
-### Error handling
-
-- **Application layer**: `Result<T, String>` with descriptive messages.
-- **API layer**: Map to `AppError` (`NotFound`, `BadRequest`, `DatabaseError`) in `crates/api/src/error.rs`.
-- Do not leak internal DB errors to clients; log with `tracing::error!`.
-
-### Repository pattern
-
-- Define trait + SeaORM impl in `crates/infrastructure/src/persistence/seaorm/`.
-- Inject as `Arc<dyn PostRepository>` in `server` / `batch` entrypoints.
-- Schema init runs in `infrastructure::db::connect` (auto-creates `posts` table).
-
-### Adding a new resource (checklist)
-
-1. SeaORM entity + repository trait/impl → `infrastructure`
-2. DTOs + service (+ batch if needed) → `application`
-3. Handlers + routes + `AppState` field → `api`
-4. Wire in `server/src/main.rs` (and `batch` if applicable)
-
-## Scope and change discipline
-
-- Minimize diff scope; match existing naming and module structure.
-- Do not refactor unrelated crates or move repository traits unless explicitly requested.
-- Do not add tests unless they cover meaningful behavior or the user asks.
-- Do not create commits, push, or edit `README.md` unless requested.
-
-## API reference
-
-| Method | Path | Body |
-|:---|:---|:---|
-| GET | `/` | — |
-| GET | `/posts` | — |
-| POST | `/posts` | `{ "title", "content" }` |
-| GET | `/posts/:id` | — |
-| PUT | `/posts/:id` | `{ "title"?, "content"? }` |
-| DELETE | `/posts/:id` | — |
+TEST:unit tests near pure/domain code;tests/ for integration;doc tests for public examples;deterministic clocks/randomness/ports;no live services unless existing harness;regression test before fix when feasible;assert behavior not implementation
+DOCS:comment why/invariants/tradeoffs;rustdoc public reusable API;docs mention errors/panics/safety;examples use ? not unwrap;keep comments current or delete
+MACROS:avoid unless clear win;input syntax mirrors output;compose with attrs/visibility;hygiene;prefer functions/traits first
+UNSAFE:forbid unless user explicitly asks or existing module requires;small unsafe blocks;private module boundary;document SAFETY invariants;safe wrapper;tests/Miri if available;never manual Send/Sync without invariant proof
