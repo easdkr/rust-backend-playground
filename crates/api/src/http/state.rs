@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use application::comment::service::CommentService;
 use application::post::service::PostService;
 use application::user::{AuthService, JwtConfig, UserService};
 use axum::extract::FromRef;
@@ -7,6 +8,7 @@ use axum::extract::FromRef;
 #[derive(Clone)]
 pub struct AppState {
     pub post_service: Arc<PostService>,
+    pub comment_service: Arc<CommentService>,
     pub auth_service: Arc<AuthService>,
     pub user_service: Arc<UserService>,
     pub jwt_config: Arc<JwtConfig>,
@@ -15,6 +17,12 @@ pub struct AppState {
 impl FromRef<AppState> for Arc<PostService> {
     fn from_ref(state: &AppState) -> Self {
         state.post_service.clone()
+    }
+}
+
+impl FromRef<AppState> for Arc<CommentService> {
+    fn from_ref(state: &AppState) -> Self {
+        state.comment_service.clone()
     }
 }
 

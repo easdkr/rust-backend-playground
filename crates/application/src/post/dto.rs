@@ -3,6 +3,7 @@ use utoipa::ToSchema;
 use validator::{Validate, ValidationError};
 
 use super::entity::Post;
+use crate::comment::dto::CommentThreadDto;
 use crate::pagination;
 use crate::validation;
 
@@ -74,6 +75,39 @@ impl From<Post> for PostDto {
             content: post.content,
             status: post.status.as_str().to_string(),
             created_at: post.created_at.expect("persisted post").to_rfc3339(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PostDetailDto {
+    pub id: i32,
+    pub title: String,
+    pub content: String,
+    pub status: String,
+    pub created_at: String,
+    pub comments: Vec<CommentThreadDto>,
+    pub comment_count: u64,
+    pub has_more_comments: bool,
+}
+
+impl PostDetailDto {
+    pub fn new(
+        post: Post,
+        comments: Vec<CommentThreadDto>,
+        comment_count: u64,
+        has_more_comments: bool,
+    ) -> Self {
+        let post = PostDto::from(post);
+        Self {
+            id: post.id,
+            title: post.title,
+            content: post.content,
+            status: post.status,
+            created_at: post.created_at,
+            comments,
+            comment_count,
+            has_more_comments,
         }
     }
 }

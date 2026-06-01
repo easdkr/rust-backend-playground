@@ -2,9 +2,13 @@ use std::sync::Arc;
 
 use api::http::AppState;
 use api::http::routes::configure_routes;
+use application::comment::service::CommentService;
 use application::post::service::PostService;
 use application::user::{AuthService, JwtConfig, TokenRepository, UserService};
 use infrastructure::cache::token_repository::ValkeyTokenRepository;
+use infrastructure::persistence::seaorm::comment_repository::{
+    CommentRepository, SeaOrmCommentRepository,
+};
 use infrastructure::persistence::seaorm::post_repository::{PostRepository, SeaOrmPostRepository};
 use infrastructure::persistence::seaorm::user_repository::{SeaOrmUserRepository, UserRepository};
 use tracing::info;
@@ -43,11 +47,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let jwt_config = JwtConfig::from_env();
 
     let post_repo: Arc<dyn PostRepository> = Arc::new(SeaOrmPostRepository::new(db_conn.clone()));
+    let comment_repo: Arc<dyn CommentRepository> =
+        Arc::new(SeaOrmCommentRepository::new(db_conn.clone()));
     let user_repo: Arc<dyn UserRepository> = Arc::new(SeaOrmUserRepository::new(db_conn));
     let token_repo: Arc<dyn TokenRepository> =
         Arc::new(ValkeyTokenRepositoryAdapter::new(valkey_repo));
 
-    let post_service = Arc::new(PostService::new(post_repo));
+    let post_service = Arc::new(PostService::new(post_repo.clone()));
+    let comment_service = Arc::new(CommentService::new(comment_repo, post_repo));
     let auth_service = Arc::new(AuthService::new(
         user_repo.clone(),
         token_repo,
@@ -57,6 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app_state = AppState {
         post_service,
+        comment_service,
         auth_service,
         user_service,
         jwt_config: Arc::new(jwt_config),

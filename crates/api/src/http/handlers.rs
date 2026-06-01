@@ -1,7 +1,14 @@
 use std::sync::Arc;
 
+use application::comment::dto::{
+    CommentDto, CommentThreadDto, CreateCommentCmd, ListCommentsQuery, UpdateCommentCmd,
+};
+use application::comment::error::CommentError;
+use application::comment::service::CommentService;
 use application::pagination::CursorPage;
-use application::post::dto::{CreatePostCmd, ListPostsQuery, PostDto, UpdatePostCmd};
+use application::post::dto::{
+    CreatePostCmd, ListPostsQuery, PostDetailDto, PostDto, UpdatePostCmd,
+};
 use application::post::error::PostError;
 use application::post::service::PostService;
 use application::user::Permission;
@@ -21,6 +28,23 @@ fn map_post_error(err: PostError) -> AppError {
         PostError::Domain(msg) => AppError::BadRequest(msg),
         PostError::Internal(msg) => {
             tracing::error!("Post operation failed: {msg}");
+            AppError::DatabaseError(msg)
+        }
+    }
+}
+
+fn map_comment_error(err: CommentError) -> AppError {
+    match err {
+        CommentError::PostNotFound(id) => {
+            AppError::NotFound(format!("Post with id {id} not found"))
+        }
+        CommentError::NotFound(id) => AppError::NotFound(format!("Comment with id {id} not found")),
+        CommentError::OwnershipError => {
+            AppError::Forbidden("Not the owner of this comment".to_string())
+        }
+        CommentError::Domain(msg) => AppError::BadRequest(msg),
+        CommentError::Internal(msg) => {
+            tracing::error!("Comment operation failed: {msg}");
             AppError::DatabaseError(msg)
         }
     }
@@ -85,7 +109,7 @@ pub async fn create_post(
     path = "/posts/{id}",
     params(("id" = i32, Path, description = "Post ID")),
     responses(
-        (status = 200, description = "Post found", body = PostDto),
+        (status = 200, description = "Post found", body = PostDetailDto),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Post not found")
     ),
@@ -95,11 +119,21 @@ pub async fn create_post(
 )]
 pub async fn get_post(
     State(post_service): State<Arc<PostService>>,
+    State(comment_service): State<Arc<CommentService>>,
     _user: AuthenticatedUser,
     Path(id): Path<i32>,
-) -> AppResult<Json<PostDto>> {
+) -> AppResult<Json<PostDetailDto>> {
     let post = post_service.get(id).await.map_err(map_post_error)?;
-    Ok(Json(PostDto::from(post)))
+    let (comments, comment_count, has_more_comments) = comment_service
+        .recent_threads(id, 5)
+        .await
+        .map_err(map_comment_error)?;
+    Ok(Json(PostDetailDto::new(
+        post,
+        comments,
+        comment_count,
+        has_more_comments,
+    )))
 }
 
 /// Update an existing post
@@ -189,5 +223,192 @@ pub async fn delete_post(
     Ok(Json(serde_json::json!({
         "success": true,
         "message": format!("Post with id {id} deleted successfully")
+    })))
+}
+
+#[utoipa::path(
+    get,
+    path = "/posts/{post_id}/comments",
+    params(
+        ("post_id" = i32, Path, description = "Post ID"),
+        ListCommentsQuery
+    ),
+    responses(
+        (status = 200, description = "Post comments", body = CursorPage<CommentThreadDto>),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Post not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn list_comments(
+    State(comment_service): State<Arc<CommentService>>,
+    _user: AuthenticatedUser,
+    Path(post_id): Path<i32>,
+    axum::extract::Query(query): axum::extract::Query<ListCommentsQuery>,
+) -> AppResult<Json<CursorPage<CommentThreadDto>>> {
+    let result = comment_service
+        .list(post_id, query)
+        .await
+        .map_err(map_comment_error)?;
+    Ok(Json(result))
+}
+
+#[utoipa::path(
+    post,
+    path = "/posts/{post_id}/comments",
+    params(("post_id" = i32, Path, description = "Post ID")),
+    request_body = CreateCommentCmd,
+    responses(
+        (status = 201, description = "Comment created", body = CommentDto),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Post not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn create_comment(
+    State(comment_service): State<Arc<CommentService>>,
+    user: AuthenticatedUser,
+    Path(post_id): Path<i32>,
+    ValidatedJson(payload): ValidatedJson<CreateCommentCmd>,
+) -> AppResult<(axum::http::StatusCode, Json<CommentDto>)> {
+    let comment = comment_service
+        .create_root(user.claims.sub.clone(), post_id, payload)
+        .await
+        .map_err(map_comment_error)?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(CommentDto::from(comment)),
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/posts/{post_id}/comments/{comment_id}/replies",
+    params(
+        ("post_id" = i32, Path, description = "Post ID"),
+        ("comment_id" = i32, Path, description = "Parent comment ID")
+    ),
+    request_body = CreateCommentCmd,
+    responses(
+        (status = 201, description = "Reply created", body = CommentDto),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Post or comment not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn create_comment_reply(
+    State(comment_service): State<Arc<CommentService>>,
+    user: AuthenticatedUser,
+    Path((post_id, comment_id)): Path<(i32, i32)>,
+    ValidatedJson(payload): ValidatedJson<CreateCommentCmd>,
+) -> AppResult<(axum::http::StatusCode, Json<CommentDto>)> {
+    let comment = comment_service
+        .create_reply(user.claims.sub.clone(), post_id, comment_id, payload)
+        .await
+        .map_err(map_comment_error)?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(CommentDto::from(comment)),
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/posts/{post_id}/comments/{comment_id}",
+    params(
+        ("post_id" = i32, Path, description = "Post ID"),
+        ("comment_id" = i32, Path, description = "Comment ID")
+    ),
+    responses(
+        (status = 200, description = "Comment found", body = CommentDto),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Post or comment not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_comment(
+    State(comment_service): State<Arc<CommentService>>,
+    _user: AuthenticatedUser,
+    Path((post_id, comment_id)): Path<(i32, i32)>,
+) -> AppResult<Json<CommentDto>> {
+    let comment = comment_service
+        .get(post_id, comment_id)
+        .await
+        .map_err(map_comment_error)?;
+    Ok(Json(CommentDto::from(comment)))
+}
+
+#[utoipa::path(
+    put,
+    path = "/posts/{post_id}/comments/{comment_id}",
+    params(
+        ("post_id" = i32, Path, description = "Post ID"),
+        ("comment_id" = i32, Path, description = "Comment ID")
+    ),
+    request_body = UpdateCommentCmd,
+    responses(
+        (status = 200, description = "Comment updated", body = CommentDto),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - not owner"),
+        (status = 404, description = "Post or comment not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn update_comment(
+    State(comment_service): State<Arc<CommentService>>,
+    user: AuthenticatedUser,
+    Path((post_id, comment_id)): Path<(i32, i32)>,
+    ValidatedJson(payload): ValidatedJson<UpdateCommentCmd>,
+) -> AppResult<Json<CommentDto>> {
+    let comment = comment_service
+        .update(post_id, comment_id, &user.claims.sub, payload)
+        .await
+        .map_err(map_comment_error)?;
+    Ok(Json(CommentDto::from(comment)))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/posts/{post_id}/comments/{comment_id}",
+    params(
+        ("post_id" = i32, Path, description = "Post ID"),
+        ("comment_id" = i32, Path, description = "Comment ID")
+    ),
+    responses(
+        (status = 200, description = "Comment deleted successfully"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - not owner"),
+        (status = 404, description = "Post or comment not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn delete_comment(
+    State(comment_service): State<Arc<CommentService>>,
+    user: AuthenticatedUser,
+    Path((post_id, comment_id)): Path<(i32, i32)>,
+) -> AppResult<Json<serde_json::Value>> {
+    comment_service
+        .delete(post_id, comment_id, &user.claims.sub)
+        .await
+        .map_err(map_comment_error)?;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": format!("Comment with id {comment_id} deleted successfully")
     })))
 }
