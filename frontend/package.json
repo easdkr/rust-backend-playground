@@ -1,0 +1,27 @@
+{
+  "name": "rust-backend-playground-frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-router": "1.170.11",
+    "@tanstack/react-start": "1.168.19",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/node": "25.9.1",
+    "@types/react": "19.2.16",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "tailwindcss": "^4.3.0",
+    "typescript": "5.9.3",
+    "vite": "8.0.16"
+  }
+}
