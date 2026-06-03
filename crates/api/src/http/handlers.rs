@@ -1,13 +1,8 @@
 use std::sync::Arc;
 
-use application::comment::dto::{
-    CommentDto, CommentThreadDto, CreateCommentCmd, ListCommentsQuery, UpdateCommentCmd,
-};
-use application::comment::error::CommentError;
-use application::comment::service::CommentService;
 use application::pagination::CursorPage;
 use application::post::dto::{
-    CreatePostCmd, ListPostsQuery, PostDetailDto, PostDto, UpdatePostCmd,
+    BulkPostCmd, BulkPostResult, CreatePostCmd, ListPostsQuery, PostDto, UpdatePostCmd,
 };
 use application::post::error::PostError;
 use application::post::service::PostService;
@@ -24,7 +19,13 @@ use crate::http::guards::check_permission;
 fn map_post_error(err: PostError) -> AppError {
     match err {
         PostError::NotFound(id) => AppError::NotFound(format!("Post with id {id} not found")),
+        PostError::NotFoundBySlug(slug) => {
+            AppError::NotFound(format!("Post with slug '{slug}' not found"))
+        }
         PostError::OwnershipError => AppError::Forbidden("Not the owner of this post".to_string()),
+        PostError::SlugConflict(slug) => {
+            AppError::BadRequest(format!("Slug '{slug}' is already taken"))
+        }
         PostError::Domain(msg) => AppError::BadRequest(msg),
         PostError::Internal(msg) => {
             tracing::error!("Post operation failed: {msg}");
@@ -33,24 +34,7 @@ fn map_post_error(err: PostError) -> AppError {
     }
 }
 
-fn map_comment_error(err: CommentError) -> AppError {
-    match err {
-        CommentError::PostNotFound(id) => {
-            AppError::NotFound(format!("Post with id {id} not found"))
-        }
-        CommentError::NotFound(id) => AppError::NotFound(format!("Comment with id {id} not found")),
-        CommentError::OwnershipError => {
-            AppError::Forbidden("Not the owner of this comment".to_string())
-        }
-        CommentError::Domain(msg) => AppError::BadRequest(msg),
-        CommentError::Internal(msg) => {
-            tracing::error!("Comment operation failed: {msg}");
-            AppError::DatabaseError(msg)
-        }
-    }
-}
-
-/// List all posts with cursor pagination
+/// List posts with cursor pagination + filter/sort/search
 #[utoipa::path(
     get,
     path = "/posts",
@@ -59,9 +43,7 @@ fn map_comment_error(err: CommentError) -> AppError {
         (status = 200, description = "List of posts", body = CursorPage<PostDto>),
         (status = 401, description = "Unauthorized")
     ),
-    security(
-        ("bearer_auth" = [])
-    )
+    security(("bearer_auth" = []))
 )]
 pub async fn list_posts(
     State(post_service): State<Arc<PostService>>,
@@ -86,9 +68,7 @@ pub async fn list_posts(
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden - insufficient permissions")
     ),
-    security(
-        ("bearer_auth" = [])
-    )
+    security(("bearer_auth" = []))
 )]
 pub async fn create_post(
     State(post_service): State<Arc<PostService>>,
@@ -103,37 +83,56 @@ pub async fn create_post(
     Ok((axum::http::StatusCode::CREATED, Json(PostDto::from(post))))
 }
 
-/// Get a single post by ID
+/// Get a single post by ID (also increments view count)
 #[utoipa::path(
     get,
     path = "/posts/{id}",
     params(("id" = i32, Path, description = "Post ID")),
     responses(
-        (status = 200, description = "Post found", body = PostDetailDto),
+        (status = 200, description = "Post found", body = PostDto),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Post not found")
     ),
-    security(
-        ("bearer_auth" = [])
-    )
+    security(("bearer_auth" = []))
 )]
 pub async fn get_post(
     State(post_service): State<Arc<PostService>>,
-    State(comment_service): State<Arc<CommentService>>,
     _user: AuthenticatedUser,
     Path(id): Path<i32>,
-) -> AppResult<Json<PostDetailDto>> {
+) -> AppResult<Json<PostDto>> {
     let post = post_service.get(id).await.map_err(map_post_error)?;
-    let (comments, comment_count, has_more_comments) = comment_service
-        .recent_threads(id, 5)
+    // view count는 fire-and-forget (실패해도 응답에 영향 없음)
+    tokio::spawn({
+        let svc = Arc::clone(&post_service);
+        async move {
+            let _ = svc.increment_view(id).await;
+        }
+    });
+    Ok(Json(PostDto::from(post)))
+}
+
+/// Get a single post by slug
+#[utoipa::path(
+    get,
+    path = "/posts/by-slug/{slug}",
+    params(("slug" = String, Path, description = "Post slug")),
+    responses(
+        (status = 200, description = "Post found", body = PostDto),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Post not found")
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn get_post_by_slug(
+    State(post_service): State<Arc<PostService>>,
+    _user: AuthenticatedUser,
+    axum::extract::Path(slug): axum::extract::Path<String>,
+) -> AppResult<Json<PostDto>> {
+    let post = post_service
+        .get_by_slug(&slug)
         .await
-        .map_err(map_comment_error)?;
-    Ok(Json(PostDetailDto::new(
-        post,
-        comments,
-        comment_count,
-        has_more_comments,
-    )))
+        .map_err(map_post_error)?;
+    Ok(Json(PostDto::from(post)))
 }
 
 /// Update an existing post
@@ -149,9 +148,7 @@ pub async fn get_post(
         (status = 403, description = "Forbidden - not owner or insufficient permissions"),
         (status = 404, description = "Post not found")
     ),
-    security(
-        ("bearer_auth" = [])
-    )
+    security(("bearer_auth" = []))
 )]
 pub async fn update_post(
     State(post_service): State<Arc<PostService>>,
@@ -168,7 +165,7 @@ pub async fn update_post(
     Ok(Json(PostDto::from(post)))
 }
 
-/// Publish a post (change status to published)
+/// Publish a post
 #[utoipa::path(
     post,
     path = "/posts/{id}/publish",
@@ -179,9 +176,7 @@ pub async fn update_post(
         (status = 403, description = "Forbidden - insufficient permissions"),
         (status = 404, description = "Post not found")
     ),
-    security(
-        ("bearer_auth" = [])
-    )
+    security(("bearer_auth" = []))
 )]
 pub async fn publish_post(
     State(post_service): State<Arc<PostService>>,
@@ -193,7 +188,79 @@ pub async fn publish_post(
     Ok(Json(PostDto::from(post)))
 }
 
-/// Delete a post
+/// Unpublish a post (Published → Draft)
+#[utoipa::path(
+    post,
+    path = "/posts/{id}/unpublish",
+    params(("id" = i32, Path, description = "Post ID")),
+    responses(
+        (status = 200, description = "Post unpublished", body = PostDto),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - not owner"),
+        (status = 404, description = "Post not found")
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn unpublish_post(
+    State(post_service): State<Arc<PostService>>,
+    _user: AuthenticatedUser,
+    _guard: OwnershipGuard<PostResource>,
+    Path(id): Path<i32>,
+) -> AppResult<Json<PostDto>> {
+    let post = post_service.unpublish(id).await.map_err(map_post_error)?;
+    Ok(Json(PostDto::from(post)))
+}
+
+/// Archive a post (Published → Archived)
+#[utoipa::path(
+    post,
+    path = "/posts/{id}/archive",
+    params(("id" = i32, Path, description = "Post ID")),
+    responses(
+        (status = 200, description = "Post archived", body = PostDto),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - not owner"),
+        (status = 404, description = "Post not found")
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn archive_post(
+    State(post_service): State<Arc<PostService>>,
+    _user: AuthenticatedUser,
+    _guard: OwnershipGuard<PostResource>,
+    Path(id): Path<i32>,
+) -> AppResult<Json<PostDto>> {
+    let post = post_service.archive(id).await.map_err(map_post_error)?;
+    Ok(Json(PostDto::from(post)))
+}
+
+/// Restore an archived post (Archived → Published)
+#[utoipa::path(
+    post,
+    path = "/posts/{id}/restore",
+    params(("id" = i32, Path, description = "Post ID")),
+    responses(
+        (status = 200, description = "Post restored", body = PostDto),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - not owner"),
+        (status = 404, description = "Post not found")
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn restore_post(
+    State(post_service): State<Arc<PostService>>,
+    _user: AuthenticatedUser,
+    _guard: OwnershipGuard<PostResource>,
+    Path(id): Path<i32>,
+) -> AppResult<Json<PostDto>> {
+    let post = post_service.restore(id).await.map_err(map_post_error)?;
+    Ok(Json(PostDto::from(post)))
+}
+
+/// Delete a post (soft delete)
 #[utoipa::path(
     delete,
     path = "/posts/{id}",
@@ -204,9 +271,7 @@ pub async fn publish_post(
         (status = 403, description = "Forbidden - not owner or insufficient permissions"),
         (status = 404, description = "Post not found")
     ),
-    security(
-        ("bearer_auth" = [])
-    )
+    security(("bearer_auth" = []))
 )]
 pub async fn delete_post(
     State(post_service): State<Arc<PostService>>,
@@ -226,189 +291,28 @@ pub async fn delete_post(
     })))
 }
 
+/// Bulk post operations
 #[utoipa::path(
-    get,
-    path = "/posts/{post_id}/comments",
-    params(
-        ("post_id" = i32, Path, description = "Post ID"),
-        ListCommentsQuery
-    ),
+    post,
+    path = "/posts/bulk",
+    request_body = BulkPostCmd,
     responses(
-        (status = 200, description = "Post comments", body = CursorPage<CommentThreadDto>),
+        (status = 200, description = "Bulk operation result", body = BulkPostResult),
+        (status = 400, description = "Bad request"),
         (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Post not found")
+        (status = 403, description = "Forbidden - insufficient permissions")
     ),
-    security(
-        ("bearer_auth" = [])
-    )
+    security(("bearer_auth" = []))
 )]
-pub async fn list_comments(
-    State(comment_service): State<Arc<CommentService>>,
-    _user: AuthenticatedUser,
-    Path(post_id): Path<i32>,
-    axum::extract::Query(query): axum::extract::Query<ListCommentsQuery>,
-) -> AppResult<Json<CursorPage<CommentThreadDto>>> {
-    let result = comment_service
-        .list(post_id, query)
+pub async fn bulk_posts(
+    State(post_service): State<Arc<PostService>>,
+    user: AuthenticatedUser,
+    ValidatedJson(cmd): ValidatedJson<BulkPostCmd>,
+) -> AppResult<Json<BulkPostResult>> {
+    check_permission(&user.claims, Permission::PostUpdate)?;
+    let result = post_service
+        .bulk(&user.claims.sub, cmd.ids, cmd.action)
         .await
-        .map_err(map_comment_error)?;
+        .map_err(map_post_error)?;
     Ok(Json(result))
-}
-
-#[utoipa::path(
-    post,
-    path = "/posts/{post_id}/comments",
-    params(("post_id" = i32, Path, description = "Post ID")),
-    request_body = CreateCommentCmd,
-    responses(
-        (status = 201, description = "Comment created", body = CommentDto),
-        (status = 400, description = "Bad request"),
-        (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Post not found")
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn create_comment(
-    State(comment_service): State<Arc<CommentService>>,
-    user: AuthenticatedUser,
-    Path(post_id): Path<i32>,
-    ValidatedJson(payload): ValidatedJson<CreateCommentCmd>,
-) -> AppResult<(axum::http::StatusCode, Json<CommentDto>)> {
-    let comment = comment_service
-        .create_root(user.claims.sub.clone(), post_id, payload)
-        .await
-        .map_err(map_comment_error)?;
-    Ok((
-        axum::http::StatusCode::CREATED,
-        Json(CommentDto::from(comment)),
-    ))
-}
-
-#[utoipa::path(
-    post,
-    path = "/posts/{post_id}/comments/{comment_id}/replies",
-    params(
-        ("post_id" = i32, Path, description = "Post ID"),
-        ("comment_id" = i32, Path, description = "Parent comment ID")
-    ),
-    request_body = CreateCommentCmd,
-    responses(
-        (status = 201, description = "Reply created", body = CommentDto),
-        (status = 400, description = "Bad request"),
-        (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Post or comment not found")
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn create_comment_reply(
-    State(comment_service): State<Arc<CommentService>>,
-    user: AuthenticatedUser,
-    Path((post_id, comment_id)): Path<(i32, i32)>,
-    ValidatedJson(payload): ValidatedJson<CreateCommentCmd>,
-) -> AppResult<(axum::http::StatusCode, Json<CommentDto>)> {
-    let comment = comment_service
-        .create_reply(user.claims.sub.clone(), post_id, comment_id, payload)
-        .await
-        .map_err(map_comment_error)?;
-    Ok((
-        axum::http::StatusCode::CREATED,
-        Json(CommentDto::from(comment)),
-    ))
-}
-
-#[utoipa::path(
-    get,
-    path = "/posts/{post_id}/comments/{comment_id}",
-    params(
-        ("post_id" = i32, Path, description = "Post ID"),
-        ("comment_id" = i32, Path, description = "Comment ID")
-    ),
-    responses(
-        (status = 200, description = "Comment found", body = CommentDto),
-        (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Post or comment not found")
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn get_comment(
-    State(comment_service): State<Arc<CommentService>>,
-    _user: AuthenticatedUser,
-    Path((post_id, comment_id)): Path<(i32, i32)>,
-) -> AppResult<Json<CommentDto>> {
-    let comment = comment_service
-        .get(post_id, comment_id)
-        .await
-        .map_err(map_comment_error)?;
-    Ok(Json(CommentDto::from(comment)))
-}
-
-#[utoipa::path(
-    put,
-    path = "/posts/{post_id}/comments/{comment_id}",
-    params(
-        ("post_id" = i32, Path, description = "Post ID"),
-        ("comment_id" = i32, Path, description = "Comment ID")
-    ),
-    request_body = UpdateCommentCmd,
-    responses(
-        (status = 200, description = "Comment updated", body = CommentDto),
-        (status = 400, description = "Bad request"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden - not owner"),
-        (status = 404, description = "Post or comment not found")
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn update_comment(
-    State(comment_service): State<Arc<CommentService>>,
-    user: AuthenticatedUser,
-    Path((post_id, comment_id)): Path<(i32, i32)>,
-    ValidatedJson(payload): ValidatedJson<UpdateCommentCmd>,
-) -> AppResult<Json<CommentDto>> {
-    let comment = comment_service
-        .update(post_id, comment_id, &user.claims.sub, payload)
-        .await
-        .map_err(map_comment_error)?;
-    Ok(Json(CommentDto::from(comment)))
-}
-
-#[utoipa::path(
-    delete,
-    path = "/posts/{post_id}/comments/{comment_id}",
-    params(
-        ("post_id" = i32, Path, description = "Post ID"),
-        ("comment_id" = i32, Path, description = "Comment ID")
-    ),
-    responses(
-        (status = 200, description = "Comment deleted successfully"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden - not owner"),
-        (status = 404, description = "Post or comment not found")
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn delete_comment(
-    State(comment_service): State<Arc<CommentService>>,
-    user: AuthenticatedUser,
-    Path((post_id, comment_id)): Path<(i32, i32)>,
-) -> AppResult<Json<serde_json::Value>> {
-    comment_service
-        .delete(post_id, comment_id, &user.claims.sub)
-        .await
-        .map_err(map_comment_error)?;
-
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "message": format!("Comment with id {comment_id} deleted successfully")
-    })))
 }

@@ -2,5 +2,8 @@ pub mod comment;
 pub mod comment_repository;
 pub mod post;
 pub mod post_repository;
+pub mod post_tag;
+pub mod tag;
+pub mod tag_repository;
 pub mod user;
 pub mod user_repository;

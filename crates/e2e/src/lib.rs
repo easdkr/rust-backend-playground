@@ -2,16 +2,12 @@ use std::sync::Arc;
 
 use api::http::AppState;
 use api::http::routes::configure_routes;
-use application::comment::service::CommentService;
 use application::password;
 use application::post::service::PostService;
 use application::user::{AuthService, JwtConfig, UserService};
 use axum_test::TestServer;
 use chrono::Utc;
-use infrastructure::persistence::seaorm::comment::Entity as CommentEntity;
-use infrastructure::persistence::seaorm::comment_repository::{
-    CommentRepository, SeaOrmCommentRepository,
-};
+use infrastructure::cache::post_cache::NoopPostCache;
 use infrastructure::persistence::seaorm::post::Entity as PostEntity;
 use infrastructure::persistence::seaorm::post_repository::{PostRepository, SeaOrmPostRepository};
 use infrastructure::persistence::seaorm::user::{
@@ -34,15 +30,11 @@ const TEST_JWT_SECRET: &str = "e2e-test-jwt-secret-key-min-32-chars";
 const EDITOR_USER_ID: &str = "e2e-editor-user";
 const EDITOR_USERNAME: &str = "editor";
 const EDITOR_PASSWORD: &str = "password";
-const USER_ID: &str = "e2e-user";
-const USER_USERNAME: &str = "user";
-const USER_PASSWORD: &str = "password";
 
 /// PostgreSQL(Testcontainers) + Axum 라우터를 묶은 E2E 테스트 컨텍스트.
 pub struct E2eContext {
     pub server: TestServer,
     access_token: String,
-    user_access_token: String,
 }
 
 impl E2eContext {
@@ -59,15 +51,7 @@ impl E2eContext {
             .expect("PostgreSQL에 연결할 수 없습니다. Docker가 실행 중인지 확인하세요.");
 
         clean_data(&db).await;
-        seed_user(
-            &db,
-            EDITOR_USER_ID,
-            EDITOR_USERNAME,
-            "editor@example.com",
-            "editor",
-        )
-        .await;
-        seed_user(&db, USER_ID, USER_USERNAME, "user@example.com", "user").await;
+        seed_editor_user(&db).await;
 
         let jwt_config = JwtConfig {
             secret: TEST_JWT_SECRET.to_string(),
@@ -76,13 +60,11 @@ impl E2eContext {
         };
 
         let post_repo: Arc<dyn PostRepository> = Arc::new(SeaOrmPostRepository::new(db.clone()));
-        let comment_repo: Arc<dyn CommentRepository> =
-            Arc::new(SeaOrmCommentRepository::new(db.clone()));
         let user_repo: Arc<dyn UserRepository> = Arc::new(SeaOrmUserRepository::new(db));
         let token_repo = test_token_repository();
+        let post_cache = Arc::new(NoopPostCache);
 
-        let post_service = Arc::new(PostService::new(post_repo.clone()));
-        let comment_service = Arc::new(CommentService::new(comment_repo, post_repo));
+        let post_service = Arc::new(PostService::new(post_repo, post_cache));
         let auth_service = Arc::new(AuthService::new(
             user_repo.clone(),
             token_repo,
@@ -98,18 +80,9 @@ impl E2eContext {
             .await
             .expect("editor login")
             .access_token;
-        let user_access_token = auth_service
-            .login(application::user::LoginCmd {
-                username: USER_USERNAME.to_string(),
-                password: USER_PASSWORD.to_string(),
-            })
-            .await
-            .expect("user login")
-            .access_token;
 
         let app_state = AppState {
             post_service,
-            comment_service,
             auth_service,
             user_service,
             jwt_config: Arc::new(jwt_config),
@@ -120,16 +93,11 @@ impl E2eContext {
         Self {
             server,
             access_token,
-            user_access_token,
         }
     }
 
     pub fn bearer(&self) -> String {
         format!("Bearer {}", self.access_token)
-    }
-
-    pub fn user_bearer(&self) -> String {
-        format!("Bearer {}", self.user_access_token)
     }
 }
 
@@ -159,10 +127,6 @@ async fn testcontainer_database_url() -> String {
 }
 
 async fn clean_data(db: &DatabaseConnection) {
-    CommentEntity::delete_many()
-        .exec(db)
-        .await
-        .expect("comments 테이블 정리 실패");
     PostEntity::delete_many()
         .exec(db)
         .await
@@ -173,23 +137,19 @@ async fn clean_data(db: &DatabaseConnection) {
         .expect("users 테이블 정리 실패");
 }
 
-async fn seed_user(db: &DatabaseConnection, id: &str, username: &str, email: &str, role: &str) {
-    let password_hash = password::hash_password(match role {
-        "user" => USER_PASSWORD,
-        _ => EDITOR_PASSWORD,
-    })
-    .expect("password hash");
+async fn seed_editor_user(db: &DatabaseConnection) {
+    let password_hash = password::hash_password(EDITOR_PASSWORD).expect("password hash");
     let now = Utc::now();
 
     let user = UserActiveModel {
-        id: Set(id.to_string()),
-        username: Set(username.to_string()),
-        email: Set(email.to_string()),
+        id: Set(EDITOR_USER_ID.to_string()),
+        username: Set(EDITOR_USERNAME.to_string()),
+        email: Set("editor@example.com".to_string()),
         password_hash: Set(password_hash),
-        role: Set(role.to_string()),
+        role: Set("editor".to_string()),
         created_at: Set(now),
         updated_at: Set(now),
     };
 
-    user.insert(db).await.expect("사용자 시드 실패");
+    user.insert(db).await.expect("editor 사용자 시드 실패");
 }

@@ -11,3 +11,4 @@ chrono.workspace = true
 redis.workspace = true
 sea-orm.workspace = true
 serde.workspace = true
+tracing.workspace = true

@@ -12,11 +12,34 @@ pub struct Model {
     pub status: String,
     pub user_id: String,
     pub created_at: DateTimeUtc,
+    pub slug: Option<String>,
+    pub excerpt: Option<String>,
+    pub published_at: Option<DateTimeUtc>,
+    pub updated_at: DateTimeUtc,
+    pub deleted_at: Option<DateTimeUtc>,
+    pub view_count: i32,
+    #[sea_orm(ignore)]
+    pub search_vector: Option<String>,
 }
 
 pub type Post = Model;
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::user::Entity",
+        from = "Column::UserId",
+        to = "super::user::Column::Id",
+        on_update = "NoAction",
+        on_delete = "NoAction"
+    )]
+    User,
+}
+
+impl Related<super::user::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::User.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}

@@ -27,31 +27,36 @@ use crate::http::state::AppState;
         handlers::list_posts,
         handlers::create_post,
         handlers::get_post,
+        handlers::get_post_by_slug,
         handlers::update_post,
         handlers::publish_post,
+        handlers::unpublish_post,
+        handlers::archive_post,
+        handlers::restore_post,
         handlers::delete_post,
-        handlers::list_comments,
-        handlers::create_comment,
-        handlers::create_comment_reply,
-        handlers::get_comment,
-        handlers::update_comment,
-        handlers::delete_comment,
+        handlers::bulk_posts,
+        tag_handlers::list_tags,
+        tag_handlers::create_tag,
+        tag_handlers::list_post_tags,
+        tag_handlers::set_post_tags,
     ),
     components(
         schemas(
             application::post::dto::PostDto,
-            application::post::dto::PostDetailDto,
             application::post::dto::CreatePostCmd,
             application::post::dto::UpdatePostCmd,
             application::post::dto::ListPostsQuery,
+            application::post::dto::BulkPostCmd,
+            application::post::dto::BulkPostResult,
+            application::post::dto::BulkPostResultItem,
+            application::post::dto::BulkPostAction,
+            application::post::dto::PostSort,
+            application::post::entity::PostStatus,
+            application::post::dto::PostAuthorDto,
+            application::tag::dto::TagDto,
+            application::tag::dto::CreateTagCmd,
+            application::tag::dto::AttachTagsCmd,
             application::pagination::CursorPage<application::post::dto::PostDto>,
-            application::comment::dto::CommentDto,
-            application::comment::dto::CommentThreadDto,
-            application::comment::dto::CommentReplyDto,
-            application::comment::dto::CreateCommentCmd,
-            application::comment::dto::UpdateCommentCmd,
-            application::comment::dto::ListCommentsQuery,
-            application::pagination::CursorPage<application::comment::dto::CommentThreadDto>,
         )
     ),
     security(
@@ -90,20 +95,8 @@ pub fn configure_routes(state: AppState) -> Router {
             "/posts",
             get(handlers::list_posts).post(handlers::create_post),
         )
-        .route(
-            "/posts/:post_id/comments",
-            get(handlers::list_comments).post(handlers::create_comment),
-        )
-        .route(
-            "/posts/:post_id/comments/:comment_id",
-            get(handlers::get_comment)
-                .put(handlers::update_comment)
-                .delete(handlers::delete_comment),
-        )
-        .route(
-            "/posts/:post_id/comments/:comment_id/replies",
-            post(handlers::create_comment_reply),
-        )
+        .route("/posts/bulk", post(handlers::bulk_posts))
+        .route("/posts/by-slug/:slug", get(handlers::get_post_by_slug))
         .route(
             "/posts/:id",
             get(handlers::get_post)
@@ -111,6 +104,17 @@ pub fn configure_routes(state: AppState) -> Router {
                 .delete(handlers::delete_post),
         )
         .route("/posts/:id/publish", post(handlers::publish_post))
+        .route("/posts/:id/unpublish", post(handlers::unpublish_post))
+        .route("/posts/:id/archive", post(handlers::archive_post))
+        .route("/posts/:id/restore", post(handlers::restore_post))
+        .route(
+            "/posts/:id/tags",
+            get(tag_handlers::list_post_tags).put(tag_handlers::set_post_tags),
+        )
+        .route(
+            "/tags",
+            get(tag_handlers::list_tags).post(tag_handlers::create_tag),
+        )
         .route_layer(from_fn_with_state(state.clone(), jwt_auth_middleware));
 
     let admin = Router::new()
@@ -228,7 +232,7 @@ async fn welcome_handler() -> axum::response::Html<&'static str> {
                 <h1>Rust Backend Playground</h1>
                 <p>Tokio + Axum + SeaORM(PostgreSQL) + Valkey 기반의 <strong>레이어드 workspace</strong> 아키텍처입니다.</p>
                 <p>application → infrastructure / api → server 계층으로 crate가 분리되어 있습니다.</p>
-                
+
                 <div class="endpoint-list">
                     <div class="endpoint">
                         <span class="method post">POST</span>

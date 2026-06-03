@@ -2,16 +2,15 @@ use std::sync::Arc;
 
 use api::http::AppState;
 use api::http::routes::configure_routes;
-use application::comment::service::CommentService;
 use application::post::service::PostService;
+use application::tag::service::TagService;
 use application::user::{AuthService, JwtConfig, TokenRepository, UserService};
+use infrastructure::cache::post_cache::{NoopPostCache, PostCache, ValkeyPostCache};
 use infrastructure::cache::token_repository::ValkeyTokenRepository;
-use infrastructure::persistence::seaorm::comment_repository::{
-    CommentRepository, SeaOrmCommentRepository,
-};
 use infrastructure::persistence::seaorm::post_repository::{PostRepository, SeaOrmPostRepository};
+use infrastructure::persistence::seaorm::tag_repository::{SeaOrmTagRepository, TagRepository};
 use infrastructure::persistence::seaorm::user_repository::{SeaOrmUserRepository, UserRepository};
-use tracing::info;
+use tracing::{info, warn};
 
 mod token_adapter;
 
@@ -47,14 +46,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let jwt_config = JwtConfig::from_env();
 
     let post_repo: Arc<dyn PostRepository> = Arc::new(SeaOrmPostRepository::new(db_conn.clone()));
-    let comment_repo: Arc<dyn CommentRepository> =
-        Arc::new(SeaOrmCommentRepository::new(db_conn.clone()));
+    let tag_repo: Arc<dyn TagRepository> = Arc::new(SeaOrmTagRepository::new(db_conn.clone()));
     let user_repo: Arc<dyn UserRepository> = Arc::new(SeaOrmUserRepository::new(db_conn));
     let token_repo: Arc<dyn TokenRepository> =
         Arc::new(ValkeyTokenRepositoryAdapter::new(valkey_repo));
 
-    let post_service = Arc::new(PostService::new(post_repo.clone()));
-    let comment_service = Arc::new(CommentService::new(comment_repo, post_repo));
+    let post_cache: Arc<dyn PostCache> = match ValkeyPostCache::connect(&valkey_url).await {
+        Ok(cache) => Arc::new(cache),
+        Err(e) => {
+            warn!("Post cache disabled (Valkey unavailable): {e}");
+            Arc::new(NoopPostCache)
+        }
+    };
+
+    let post_service = Arc::new(PostService::new(post_repo, post_cache));
+    let tag_service = Arc::new(TagService::new(tag_repo));
     let auth_service = Arc::new(AuthService::new(
         user_repo.clone(),
         token_repo,
@@ -64,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app_state = AppState {
         post_service,
-        comment_service,
+        tag_service,
         auth_service,
         user_service,
         jwt_config: Arc::new(jwt_config),

@@ -109,6 +109,7 @@ dependencies = [
  "libs",
  "serde",
  "serde_json",
+ "tokio",
  "tracing",
  "utoipa",
  "utoipa-scalar",
@@ -127,6 +128,9 @@ dependencies = [
  "libs",
  "rand 0.8.6",
  "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
  "utoipa",
  "validator",
 ]
@@ -1777,6 +1781,7 @@ dependencies = [
  "redis",
  "sea-orm",
  "serde",
+ "tracing",
 ]
 
 [[package]]

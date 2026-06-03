@@ -90,7 +90,13 @@ where
 fn map_post_error(err: PostError) -> AppError {
     match err {
         PostError::NotFound(id) => AppError::NotFound(format!("Post with id {id} not found")),
+        PostError::NotFoundBySlug(slug) => {
+            AppError::NotFound(format!("Post with slug '{slug}' not found"))
+        }
         PostError::OwnershipError => AppError::Forbidden("Not the owner of this post".to_string()),
+        PostError::SlugConflict(slug) => {
+            AppError::BadRequest(format!("Slug '{slug}' is already taken"))
+        }
         PostError::Domain(msg) => AppError::BadRequest(msg),
         PostError::Internal(msg) => {
             tracing::error!("Post operation failed: {msg}");
@@ -124,7 +130,7 @@ impl ResourceOwnership for PostResource {
 
         let post = post_service.get(id).await.map_err(map_post_error)?;
 
-        match &post.user_id {
+        match &post.post.user_id {
             Some(owner_id) if owner_id == user_id => Ok(()),
             _ => Err(AppError::Forbidden(
                 "Not the owner of this post".to_string(),

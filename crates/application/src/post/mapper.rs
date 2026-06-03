@@ -18,5 +18,11 @@ pub fn domain_from_record(record: PostRecord) -> Result<Post, PostError> {
             Some(record.user_id)
         },
         created_at: Some(record.created_at),
+        updated_at: record.updated_at,
+        slug: record.slug,
+        excerpt: record.excerpt,
+        published_at: record.published_at,
+        deleted_at: record.deleted_at,
+        view_count: record.view_count,
     })
 }
