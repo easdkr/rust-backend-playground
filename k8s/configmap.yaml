@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: playground-config
+  namespace: playground
+data:
+  RUST_LOG: "debug"
+  HOST: "0.0.0.0"
+  PORT: "3000"
+  AUTH_HOST: "0.0.0.0"
+  AUTH_PORT: "3002"
+  WS_HOST: "0.0.0.0"
+  WS_PORT: "3001"

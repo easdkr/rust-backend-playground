@@ -1,5 +1,6 @@
 pub mod comment;
 pub mod error;
+pub mod notification;
 pub mod pagination;
 pub mod password;
 pub mod post;

@@ -1,28 +1,59 @@
 # syntax=docker/dockerfile:1
-#
-# SeaORM Migrator 참고:
-# 마이그레이션은 런타임에 애플리케이션 시작 시 자동 실행됨 (db.rs의 Migrator::up())
-# 별도의 마이그레이션 빌드 단계는 필요 없음
 
+# ============================================================
+# Builder stage
+# ============================================================
 FROM rust:1-bookworm AS builder
 WORKDIR /app
 
-# migration 크레이트는 infrastructure의 의존성으로 자동 포함됨
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY migration ./migration
 
-RUN cargo build --release -p server -p batch
+# Build all server binaries
+RUN cargo build --release -p server -p auth-server -p websocket-server
 
-FROM debian:bookworm-slim AS runtime
+# ============================================================
+# API Server runtime
+# ============================================================
+FROM debian:bookworm-slim AS api-server
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/rust-backend-playground /usr/local/bin/rust-backend-playground
-COPY --from=builder /app/target/release/rust-backend-playground-batch /usr/local/bin/rust-backend-playground-batch
+COPY --from=builder /app/target/release/rust-backend-playground /usr/local/bin/server
 
 EXPOSE 3000
 
-CMD ["rust-backend-playground"]
+CMD ["server"]
+
+# ============================================================
+# Auth Server runtime
+# ============================================================
+FROM debian:bookworm-slim AS auth-server
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/auth-server /usr/local/bin/auth-server
+
+EXPOSE 3002
+
+CMD ["auth-server"]
+
+# ============================================================
+# WebSocket Server runtime
+# ============================================================
+FROM debian:bookworm-slim AS websocket-server
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/websocket-server /usr/local/bin/websocket-server
+
+EXPOSE 3001
+
+CMD ["websocket-server"]

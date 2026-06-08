@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use application::notification::service::NotificationService;
 use application::post::service::PostService;
 use application::tag::service::TagService;
 use application::user::{AuthService, JwtConfig, UserService};
@@ -12,6 +13,7 @@ pub struct AppState {
     pub auth_service: Arc<AuthService>,
     pub user_service: Arc<UserService>,
     pub jwt_config: Arc<JwtConfig>,
+    pub notification_service: Arc<NotificationService>,
 }
 
 impl FromRef<AppState> for Arc<PostService> {
@@ -41,5 +43,11 @@ impl FromRef<AppState> for Arc<UserService> {
 impl FromRef<AppState> for Arc<JwtConfig> {
     fn from_ref(state: &AppState) -> Self {
         state.jwt_config.clone()
+    }
+}
+
+impl FromRef<AppState> for Arc<NotificationService> {
+    fn from_ref(state: &AppState) -> Self {
+        state.notification_service.clone()
     }
 }

@@ -16,3 +16,4 @@ export { Badge, type BadgeProps, type BadgeTone } from '~/design-system/componen
 export { EmptyState, type EmptyStateProps } from '~/design-system/components/empty-state';
 export { Spinner, type SpinnerProps, type SpinnerSize } from '~/design-system/components/spinner';
 export { ErrorMessage, type ErrorMessageProps } from '~/design-system/components/error-message';
+export { NotificationBell, type NotificationBellProps } from '~/design-system/components/notification-bell';

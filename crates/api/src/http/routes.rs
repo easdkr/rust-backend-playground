@@ -9,6 +9,8 @@ use utoipa_scalar::{Scalar, Servable};
 
 use super::auth;
 use super::handlers;
+use super::notification_handlers;
+use super::tag_handlers;
 use super::middleware::auth::{jwt_auth_middleware, require_admin_middleware};
 use crate::http::state::AppState;
 
@@ -39,6 +41,11 @@ use crate::http::state::AppState;
         tag_handlers::create_tag,
         tag_handlers::list_post_tags,
         tag_handlers::set_post_tags,
+        notification_handlers::list_notifications,
+        notification_handlers::create_notification,
+        notification_handlers::mark_as_read,
+        notification_handlers::mark_all_as_read,
+        notification_handlers::unread_count,
     ),
     components(
         schemas(
@@ -56,6 +63,9 @@ use crate::http::state::AppState;
             application::tag::dto::TagDto,
             application::tag::dto::CreateTagCmd,
             application::tag::dto::AttachTagsCmd,
+            application::notification::dto::NotificationDto,
+            application::notification::dto::CreateNotificationCmd,
+            application::notification::dto::NotificationListQuery,
             application::pagination::CursorPage<application::post::dto::PostDto>,
         )
     ),
@@ -86,11 +96,9 @@ impl utoipa::Modify for SecurityAddon {
 
 pub fn configure_routes(state: AppState) -> Router {
     let public = Router::new()
-        .route("/auth/login", post(auth::login))
-        .route("/auth/refresh", post(auth::refresh));
+        .route("/health", get(health_handler));
 
     let protected = Router::new()
-        .route("/auth/logout", post(auth::logout))
         .route(
             "/posts",
             get(handlers::list_posts).post(handlers::create_post),
@@ -115,6 +123,10 @@ pub fn configure_routes(state: AppState) -> Router {
             "/tags",
             get(tag_handlers::list_tags).post(tag_handlers::create_tag),
         )
+        .route("/notifications", get(notification_handlers::list_notifications).post(notification_handlers::create_notification))
+        .route("/notifications/unread-count", get(notification_handlers::unread_count))
+        .route("/notifications/read-all", post(notification_handlers::mark_all_as_read))
+        .route("/notifications/:id/read", post(notification_handlers::mark_as_read))
         .route_layer(from_fn_with_state(state.clone(), jwt_auth_middleware));
 
     let admin = Router::new()
@@ -133,6 +145,13 @@ pub fn configure_routes(state: AppState) -> Router {
         .with_state(state);
 
     HttpAspects::new().apply(router)
+}
+
+async fn health_handler() -> axum::response::Json<serde_json::Value> {
+    axum::response::Json(serde_json::json!({
+        "status": "ok",
+        "service": "api"
+    }))
 }
 
 async fn welcome_handler() -> axum::response::Html<&'static str> {
@@ -235,9 +254,9 @@ async fn welcome_handler() -> axum::response::Html<&'static str> {
 
                 <div class="endpoint-list">
                     <div class="endpoint">
-                        <span class="method post">POST</span>
-                        <span class="path">/auth/login</span>
-                        <span class="desc">로그인</span>
+                        <span class="method get">GET</span>
+                        <span class="path">/health</span>
+                        <span class="desc">헬스체크</span>
                     </div>
                     <div class="endpoint">
                         <span class="method get">GET</span>
@@ -248,6 +267,11 @@ async fn welcome_handler() -> axum::response::Html<&'static str> {
                         <span class="method post">POST</span>
                         <span class="path">/posts</span>
                         <span class="desc">새 포스트 생성 (Editor+)</span>
+                    </div>
+                    <div class="endpoint">
+                        <span class="method get">GET</span>
+                        <span class="path">/notifications</span>
+                        <span class="desc">알림 목록 (JWT)</span>
                     </div>
                     <div class="endpoint">
                         <span class="method get">GET</span>

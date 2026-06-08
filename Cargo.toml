@@ -7,6 +7,8 @@ members = [
     "crates/libs",
     "crates/api",
     "crates/server",
+    "crates/websocket-server",
+    "crates/auth-server",
     "crates/batch",
     "crates/e2e",
 ]
@@ -32,8 +34,9 @@ serial_test = "3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
-testcontainers-modules = { version = "0.15", features = ["postgres"] }
 tokio-cron-scheduler = "0.15"
+tokio-stream = "0.1"
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tower = "0.5"

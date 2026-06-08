@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use api::http::AppState;
 use api::http::routes::configure_routes;
+use application::notification::seaorm_repository::SeaOrmNotificationRepository;
+use application::notification::service::NotificationService;
 use application::post::service::PostService;
 use application::tag::service::TagService;
 use application::user::{AuthService, JwtConfig, TokenRepository, UserService};
@@ -24,10 +26,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "rust_backend_playground=debug,tower_http=debug,axum::rejection=trace",
     );
 
-    info!("Starting Rust Backend Playground...");
+    info!("Starting API Server...");
 
     let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-        "postgres://postgres:postgrespassword@127.0.0.1:5433/playground".to_string()
+        "postgres://postgres:***@127.0.0.1:5433/playground".to_string()
     });
     let valkey_url =
         std::env::var("VALKEY_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
@@ -47,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let post_repo: Arc<dyn PostRepository> = Arc::new(SeaOrmPostRepository::new(db_conn.clone()));
     let tag_repo: Arc<dyn TagRepository> = Arc::new(SeaOrmTagRepository::new(db_conn.clone()));
-    let user_repo: Arc<dyn UserRepository> = Arc::new(SeaOrmUserRepository::new(db_conn));
+    let user_repo: Arc<dyn UserRepository> = Arc::new(SeaOrmUserRepository::new(db_conn.clone()));
     let token_repo: Arc<dyn TokenRepository> =
         Arc::new(ValkeyTokenRepositoryAdapter::new(valkey_repo));
 
@@ -68,18 +70,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     let user_service = Arc::new(UserService::new(user_repo));
 
+    // Notification service
+    let notification_repo = Arc::new(SeaOrmNotificationRepository::new(db_conn));
+    let notification_service = Arc::new(NotificationService::new(notification_repo, None));
+
     let app_state = AppState {
         post_service,
         tag_service,
         auth_service,
         user_service,
         jwt_config: Arc::new(jwt_config),
+        notification_service,
     };
 
     let app = configure_routes(app_state);
 
     let listener = tokio::net::TcpListener::bind(&addr_str).await?;
-    info!("Listening on http://{}", addr_str);
+    info!("API server listening on http://{}", addr_str);
     axum::serve(listener, app).await?;
 
     Ok(())

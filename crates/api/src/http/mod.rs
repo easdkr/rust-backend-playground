@@ -3,6 +3,7 @@ pub mod extractors;
 pub mod guards;
 pub mod handlers;
 pub mod middleware;
+pub mod notification_handlers;
 pub mod routes;
 pub mod state;
 pub mod tag_handlers;

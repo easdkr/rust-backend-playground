@@ -57,6 +57,29 @@ export interface LoginResult {
   access_token_preview: string
 }
 
+/**
+ * Body of `POST /auth/refresh` — refresh token rotation.
+ */
+export interface RefreshCmd {
+  refresh_token: string
+}
+
+/**
+ * Result of `POST /auth/refresh` — same shape as login, new tokens.
+ */
+export interface RefreshResult {
+  token_type: 'Bearer'
+  expires_in: number
+  access_token_preview: string
+}
+
+/**
+ * Result of `POST /auth/logout`.
+ */
+export interface LogoutResult {
+  logged_out: boolean
+}
+
 // ---------------------------------------------------------------------------
 // Posts
 // ---------------------------------------------------------------------------
@@ -201,8 +224,54 @@ export interface BackendErrorEnvelope {
 }
 
 // ---------------------------------------------------------------------------
-// Current session (for `getCurrentSessionServerFn`)
+// Notifications
 // ---------------------------------------------------------------------------
+
+/**
+ * `NotificationType` — `crates/application/src/notification/entity.rs`.
+ * Lowercase snake_case values from the backend enum.
+ */
+export const NotificationType = {
+  PostPublished: 'post_published',
+  CommentReceived: 'comment_received',
+  Mention: 'mention',
+  System: 'system',
+} as const
+
+export type NotificationType = (typeof NotificationType)[keyof typeof NotificationType]
+
+/**
+ * `NotificationDto` — `crates/application/src/notification/dto.rs`.
+ */
+export interface NotificationDto {
+  id: number
+  user_id: string
+  notification_type: string
+  title: string
+  body: string
+  data: Record<string, string | number | boolean | null> | null
+  is_read: boolean
+  /** RFC3339 timestamp string. */
+  created_at: string
+  /** RFC3339 timestamp string, or `null` if unread. */
+  read_at: string | null
+}
+
+/**
+ * Query parameters for `GET /notifications`.
+ */
+export interface NotificationListQuery {
+  is_read?: boolean | null
+  limit?: number | null
+  offset?: number | null
+}
+
+/**
+ * Response for unread count — `GET /notifications/unread/count`.
+ */
+export interface UnreadCountResponse {
+  count: number
+}
 
 /**
  * The MVP has no `/me` endpoint, so `getCurrentSessionServerFn` returns

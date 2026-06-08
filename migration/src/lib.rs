@@ -8,6 +8,7 @@ mod m20240101_000005_enhance_posts;
 mod m20240101_000006_create_tags;
 mod m20240101_000007_create_post_revisions;
 mod m20240101_000008_create_comments;
+mod m20240101_000009_create_notifications;
 #[path = "migrator.rs"]
 mod migration_registry;
 
