@@ -29,7 +29,8 @@ pub trait NotificationRepository: Send + Sync {
 
     async fn find_by_id(&self, id: i32) -> Result<Option<Notification>, String>;
 
-    async fn find_many(&self, filter: NotificationFilter) -> Result<NotificationListResult, String>;
+    async fn find_many(&self, filter: NotificationFilter)
+    -> Result<NotificationListResult, String>;
 
     async fn mark_as_read(&self, id: i32, user_id: &str) -> Result<bool, String>;
 

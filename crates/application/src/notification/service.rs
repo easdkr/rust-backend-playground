@@ -61,7 +61,7 @@ impl NotificationService {
         let filter = NotificationFilter {
             user_id,
             is_read: query.is_read,
-            limit: query.limit.unwrap_or(20).max(1).min(100),
+            limit: query.limit.unwrap_or(20).clamp(1, 100),
             offset: query.offset.unwrap_or(0).max(0),
         };
 
@@ -71,11 +71,7 @@ impl NotificationService {
             .map_err(NotificationError::repo)
     }
 
-    pub async fn mark_as_read(
-        &self,
-        id: i32,
-        user_id: &str,
-    ) -> Result<(), NotificationError> {
+    pub async fn mark_as_read(&self, id: i32, user_id: &str) -> Result<(), NotificationError> {
         let updated = self
             .repo
             .mark_as_read(id, user_id)

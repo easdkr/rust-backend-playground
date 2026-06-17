@@ -45,8 +45,3 @@ impl MigrationTrait for Migration {
         Ok(())
     }
 }
-
-#[derive(DeriveIden)]
-enum Tags {
-    Table,
-}

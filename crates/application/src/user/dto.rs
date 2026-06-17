@@ -10,6 +10,13 @@ pub struct LoginCmd {
     pub password: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct RegisterCmd {
+    pub username: String,
+    pub email: String,
+    pub password: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
     pub access_token: String,
@@ -60,6 +67,15 @@ pub struct UserDto {
     pub username: String,
     pub email: String,
     pub role: Role,
+    pub bio: Option<String>,
+    pub avatar_url: Option<String>,
+    pub last_login_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateProfileCmd {
+    pub bio: Option<String>,
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]

@@ -12,7 +12,8 @@ api = { path = "../api" }
 application = { path = "../application" }
 async-trait.workspace = true
 infrastructure = { path = "../infrastructure" }
-libs = { path = "../libs", features = ["telemetry"] }
+libs = { path = "../libs", features = ["telemetry", "redis"] }
+redis.workspace = true
 axum.workspace = true
 dotenvy.workspace = true
 tokio.workspace = true

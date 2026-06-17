@@ -24,5 +24,6 @@ pub fn domain_from_record(record: PostRecord) -> Result<Post, PostError> {
         published_at: record.published_at,
         deleted_at: record.deleted_at,
         view_count: record.view_count,
+        like_count: record.like_count,
     })
 }

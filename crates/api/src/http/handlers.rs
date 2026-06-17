@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
+use application::comment::error::CommentError;
+use application::comment::service::CommentService;
 use application::pagination::CursorPage;
 use application::post::dto::{
-    BulkPostCmd, BulkPostResult, CreatePostCmd, ListPostsQuery, PostDto, UpdatePostCmd,
+    BulkPostCmd, BulkPostResult, CreatePostCmd, ListPostsQuery, PostDto, PostRevisionDto,
+    SearchPostsQuery, UpdatePostCmd,
 };
 use application::post::error::PostError;
 use application::post::service::PostService;
@@ -34,6 +37,23 @@ fn map_post_error(err: PostError) -> AppError {
     }
 }
 
+fn map_comment_error(err: CommentError) -> AppError {
+    match err {
+        CommentError::PostNotFound(id) => {
+            AppError::NotFound(format!("Post with id {id} not found"))
+        }
+        CommentError::NotFound(id) => AppError::NotFound(format!("Comment with id {id} not found")),
+        CommentError::OwnershipError => {
+            AppError::Forbidden("Not the owner of this comment".to_string())
+        }
+        CommentError::Domain(msg) => AppError::BadRequest(msg),
+        CommentError::Internal(msg) => {
+            tracing::error!("Comment operation failed: {msg}");
+            AppError::DatabaseError(msg)
+        }
+    }
+}
+
 /// List posts with cursor pagination + filter/sort/search
 #[utoipa::path(
     get,
@@ -52,6 +72,30 @@ pub async fn list_posts(
 ) -> AppResult<Json<CursorPage<PostDto>>> {
     let result = post_service
         .find_many(query)
+        .await
+        .map_err(map_post_error)?;
+    Ok(Json(result))
+}
+
+/// Full-text search posts
+#[utoipa::path(
+    get,
+    path = "/posts/search",
+    params(SearchPostsQuery),
+    responses(
+        (status = 200, description = "Search results", body = CursorPage<PostDto>),
+        (status = 400, description = "Bad request"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn search_posts(
+    State(post_service): State<Arc<PostService>>,
+    _user: AuthenticatedUser,
+    axum::extract::Query(query): axum::extract::Query<SearchPostsQuery>,
+) -> AppResult<Json<CursorPage<PostDto>>> {
+    let result = post_service
+        .search_fts(query)
         .await
         .map_err(map_post_error)?;
     Ok(Json(result))
@@ -97,6 +141,7 @@ pub async fn create_post(
 )]
 pub async fn get_post(
     State(post_service): State<Arc<PostService>>,
+    State(comment_service): State<Arc<CommentService>>,
     _user: AuthenticatedUser,
     Path(id): Path<i32>,
 ) -> AppResult<Json<PostDto>> {
@@ -108,7 +153,15 @@ pub async fn get_post(
             let _ = svc.increment_view(id).await;
         }
     });
-    Ok(Json(PostDto::from(post)))
+    let (threads, count, has_more) = comment_service
+        .recent_threads(id, 5)
+        .await
+        .map_err(map_comment_error)?;
+    let mut dto = PostDto::from(post);
+    dto.comment_count = count as i32;
+    dto.has_more_comments = has_more;
+    dto.comments = threads;
+    Ok(Json(dto))
 }
 
 /// Get a single post by slug
@@ -315,4 +368,84 @@ pub async fn bulk_posts(
         .await
         .map_err(map_post_error)?;
     Ok(Json(result))
+}
+
+/// List revisions of a post
+#[utoipa::path(
+    get,
+    path = "/posts/{id}/revisions",
+    params(("id" = i32, Path, description = "Post ID")),
+    responses(
+        (status = 200, description = "List of revisions", body = Vec<PostRevisionDto>),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Post not found")
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn list_post_revisions(
+    State(post_service): State<Arc<PostService>>,
+    _user: AuthenticatedUser,
+    Path(id): Path<i32>,
+) -> AppResult<Json<Vec<PostRevisionDto>>> {
+    let revisions = post_service
+        .list_revisions(id)
+        .await
+        .map_err(map_post_error)?;
+    Ok(Json(revisions))
+}
+
+/// Get a specific revision of a post
+#[utoipa::path(
+    get,
+    path = "/posts/{id}/revisions/{version}",
+    params(
+        ("id" = i32, Path, description = "Post ID"),
+        ("version" = i32, Path, description = "Revision version")
+    ),
+    responses(
+        (status = 200, description = "Revision found", body = PostRevisionDto),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Post or revision not found")
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn get_post_revision(
+    State(post_service): State<Arc<PostService>>,
+    _user: AuthenticatedUser,
+    Path((id, version)): Path<(i32, i32)>,
+) -> AppResult<Json<PostRevisionDto>> {
+    let revision = post_service
+        .get_revision(id, version)
+        .await
+        .map_err(map_post_error)?;
+    Ok(Json(revision))
+}
+
+/// Restore a post to a specific revision (Admin/Editor only)
+#[utoipa::path(
+    post,
+    path = "/posts/{id}/revisions/{version}/restore",
+    params(
+        ("id" = i32, Path, description = "Post ID"),
+        ("version" = i32, Path, description = "Revision version")
+    ),
+    responses(
+        (status = 200, description = "Post restored", body = PostDto),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden - insufficient permissions"),
+        (status = 404, description = "Post or revision not found")
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn restore_post_revision(
+    State(post_service): State<Arc<PostService>>,
+    user: AuthenticatedUser,
+    Path((id, version)): Path<(i32, i32)>,
+) -> AppResult<Json<PostDto>> {
+    check_permission(&user.claims, Permission::PostUpdate)?;
+    let post = post_service
+        .restore_revision(id, version, &user.claims.sub)
+        .await
+        .map_err(map_post_error)?;
+    Ok(Json(PostDto::from(post)))
 }

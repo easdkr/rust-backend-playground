@@ -102,7 +102,7 @@ function PostListItem({ post }: { post: PostDto }) {
   return (
     <Link
       to="/posts/$id"
-      params={{ id: String(post.id) }}
+      params={{ id: post.id }}
       className="block focus:outline-none"
       data-ui="post-list-link"
     >
@@ -133,9 +133,7 @@ function StatusBadge({ status }: { status: PostDto['status'] }) {
       ? 'success'
       : status === 'archived'
         ? 'warn'
-        : status === 'deleted'
-          ? 'danger'
-          : 'neutral'
+        : 'neutral'
   const label =
     status.charAt(0).toUpperCase() + status.slice(1)
   return (

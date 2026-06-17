@@ -9,6 +9,10 @@ mod m20240101_000006_create_tags;
 mod m20240101_000007_create_post_revisions;
 mod m20240101_000008_create_comments;
 mod m20240101_000009_create_notifications;
+mod m20240101_000010_create_likes;
+mod m20240101_000011_add_user_profile_fields;
+mod m20240101_000012_add_fts_to_posts;
+mod m20240101_000013_add_version_to_post_revisions;
 #[path = "migrator.rs"]
 mod migration_registry;
 

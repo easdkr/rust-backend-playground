@@ -58,6 +58,9 @@ pub fn map_auth_error(err: application::user::AuthError) -> AppError {
         application::user::AuthError::UserNotFound => {
             AppError::Unauthorized("User not found".to_string())
         }
+        application::user::AuthError::UserAlreadyExists => {
+            AppError::BadRequest("User already exists".to_string())
+        }
         application::user::AuthError::TokenExpired => {
             AppError::TokenExpired("Access token has expired".to_string())
         }

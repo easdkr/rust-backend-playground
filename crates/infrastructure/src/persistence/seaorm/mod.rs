@@ -1,8 +1,12 @@
 pub mod comment;
 pub mod comment_repository;
+pub mod like;
+pub mod like_repository;
 pub mod notification;
 pub mod post;
 pub mod post_repository;
+pub mod post_revision;
+pub mod post_revision_repository;
 pub mod post_tag;
 pub mod tag;
 pub mod tag_repository;

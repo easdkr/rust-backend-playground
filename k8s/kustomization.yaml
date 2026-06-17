@@ -11,11 +11,13 @@ resources:
   - postgres-service.yaml
   - valkey.yaml
   - valkey-service.yaml
-  - migration-job.yaml
   - api-deployment.yaml
   - api-service.yaml
   - auth-deployment.yaml
   - auth-service.yaml
   - ws-deployment.yaml
   - ws-service.yaml
-  - ingress.yaml
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  - backend-ingressroutes.yaml
+  - frontend-ingressroute.yaml

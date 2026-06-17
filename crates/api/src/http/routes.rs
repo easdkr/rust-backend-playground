@@ -8,10 +8,14 @@ use utoipa::OpenApi;
 use utoipa_scalar::{Scalar, Servable};
 
 use super::auth;
+use super::comment_handlers;
 use super::handlers;
+use super::like_handlers;
+use super::middleware::auth::{jwt_auth_middleware, require_admin_middleware};
 use super::notification_handlers;
 use super::tag_handlers;
-use super::middleware::auth::{jwt_auth_middleware, require_admin_middleware};
+use super::upload_handlers;
+use super::user_handlers;
 use crate::http::state::AppState;
 
 #[derive(OpenApi)]
@@ -27,6 +31,7 @@ use crate::http::state::AppState;
     ),
     paths(
         handlers::list_posts,
+        handlers::search_posts,
         handlers::create_post,
         handlers::get_post,
         handlers::get_post_by_slug,
@@ -37,6 +42,15 @@ use crate::http::state::AppState;
         handlers::restore_post,
         handlers::delete_post,
         handlers::bulk_posts,
+        handlers::list_post_revisions,
+        handlers::get_post_revision,
+        handlers::restore_post_revision,
+        comment_handlers::create_comment,
+        comment_handlers::create_reply,
+        comment_handlers::list_comments,
+        comment_handlers::get_comment,
+        comment_handlers::update_comment,
+        comment_handlers::delete_comment,
         tag_handlers::list_tags,
         tag_handlers::create_tag,
         tag_handlers::list_post_tags,
@@ -58,6 +72,7 @@ use crate::http::state::AppState;
             application::post::dto::BulkPostResultItem,
             application::post::dto::BulkPostAction,
             application::post::dto::PostSort,
+            application::post::dto::PostRevisionDto,
             application::post::entity::PostStatus,
             application::post::dto::PostAuthorDto,
             application::tag::dto::TagDto,
@@ -66,7 +81,13 @@ use crate::http::state::AppState;
             application::notification::dto::NotificationDto,
             application::notification::dto::CreateNotificationCmd,
             application::notification::dto::NotificationListQuery,
+            application::comment::dto::CreateCommentCmd,
+            application::comment::dto::UpdateCommentCmd,
+            application::comment::dto::CommentDto,
+            application::comment::dto::CommentThreadDto,
+            application::comment::dto::CommentReplyDto,
             application::pagination::CursorPage<application::post::dto::PostDto>,
+            application::pagination::CursorPage<application::comment::dto::CommentThreadDto>,
         )
     ),
     security(
@@ -95,16 +116,25 @@ impl utoipa::Modify for SecurityAddon {
 }
 
 pub fn configure_routes(state: AppState) -> Router {
-    let public = Router::new()
-        .route("/health", get(health_handler));
+    let public = Router::new().route("/health", get(health_handler));
 
     let protected = Router::new()
+        .route("/posts/search", get(handlers::search_posts))
         .route(
             "/posts",
             get(handlers::list_posts).post(handlers::create_post),
         )
         .route("/posts/bulk", post(handlers::bulk_posts))
         .route("/posts/by-slug/:slug", get(handlers::get_post_by_slug))
+        .route("/posts/:id/revisions", get(handlers::list_post_revisions))
+        .route(
+            "/posts/:id/revisions/:version",
+            get(handlers::get_post_revision),
+        )
+        .route(
+            "/posts/:id/revisions/:version/restore",
+            post(handlers::restore_post_revision),
+        )
         .route(
             "/posts/:id",
             get(handlers::get_post)
@@ -116,6 +146,24 @@ pub fn configure_routes(state: AppState) -> Router {
         .route("/posts/:id/archive", post(handlers::archive_post))
         .route("/posts/:id/restore", post(handlers::restore_post))
         .route(
+            "/posts/:id/comments",
+            get(comment_handlers::list_comments).post(comment_handlers::create_comment),
+        )
+        .route(
+            "/posts/:id/comments/:comment_id",
+            get(comment_handlers::get_comment)
+                .put(comment_handlers::update_comment)
+                .delete(comment_handlers::delete_comment),
+        )
+        .route(
+            "/posts/:id/comments/:parent_comment_id/replies",
+            post(comment_handlers::create_reply),
+        )
+        .route(
+            "/posts/:id/like",
+            get(like_handlers::get_like_status).post(like_handlers::toggle_like),
+        )
+        .route(
             "/posts/:id/tags",
             get(tag_handlers::list_post_tags).put(tag_handlers::set_post_tags),
         )
@@ -123,10 +171,28 @@ pub fn configure_routes(state: AppState) -> Router {
             "/tags",
             get(tag_handlers::list_tags).post(tag_handlers::create_tag),
         )
-        .route("/notifications", get(notification_handlers::list_notifications).post(notification_handlers::create_notification))
-        .route("/notifications/unread-count", get(notification_handlers::unread_count))
-        .route("/notifications/read-all", post(notification_handlers::mark_all_as_read))
-        .route("/notifications/:id/read", post(notification_handlers::mark_as_read))
+        .route(
+            "/notifications",
+            get(notification_handlers::list_notifications)
+                .post(notification_handlers::create_notification),
+        )
+        .route(
+            "/notifications/unread-count",
+            get(notification_handlers::unread_count),
+        )
+        .route(
+            "/notifications/read-all",
+            post(notification_handlers::mark_all_as_read),
+        )
+        .route(
+            "/notifications/:id/read",
+            post(notification_handlers::mark_as_read),
+        )
+        .route(
+            "/profile",
+            get(user_handlers::get_profile).put(user_handlers::update_profile),
+        )
+        .route("/uploads", post(upload_handlers::upload_image))
         .route_layer(from_fn_with_state(state.clone(), jwt_auth_middleware));
 
     let admin = Router::new()

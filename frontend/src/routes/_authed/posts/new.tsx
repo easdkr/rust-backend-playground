@@ -102,7 +102,7 @@ function NewPostPage() {
       const post = await createPostServerFn({ data: payload })
       await navigate({
         to: '/posts/$id',
-        params: { id: String(post.id) },
+        params: { id: post.id },
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not create the post.'

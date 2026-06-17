@@ -1,0 +1,36 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let db = manager.get_connection();
+
+        // Add search_vector column (compatible with default PostgreSQL images)
+        db.execute_unprepared(
+            "ALTER TABLE posts ADD COLUMN IF NOT EXISTS search_vector tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(content, ''))) STORED;"
+        ).await?;
+
+        // Create GIN index
+        db.execute_unprepared(
+            "CREATE INDEX IF NOT EXISTS idx_posts_search ON posts USING GIN(search_vector);",
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let db = manager.get_connection();
+
+        db.execute_unprepared("DROP INDEX IF EXISTS idx_posts_search;")
+            .await?;
+
+        db.execute_unprepared("ALTER TABLE posts DROP COLUMN IF EXISTS search_vector;")
+            .await?;
+
+        Ok(())
+    }
+}

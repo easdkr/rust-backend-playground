@@ -18,6 +18,7 @@ pub struct Model {
     pub updated_at: DateTimeUtc,
     pub deleted_at: Option<DateTimeUtc>,
     pub view_count: i32,
+    pub like_count: i32,
     #[sea_orm(ignore)]
     pub search_vector: Option<String>,
 }

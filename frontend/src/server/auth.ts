@@ -26,6 +26,7 @@ import type {
   RefreshCmd,
   RefreshResult,
   TokenResponse,
+  UserDto,
 } from '~/lib/api/types.ts'
 
 const ACCESS_TOKEN_PREVIEW_LEN = 8
@@ -46,17 +47,22 @@ export const loginServerFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }): Promise<LoginResult> => {
     getApiBaseUrl()
 
-    const response = await apiFetch<TokenResponse>('/auth/login', {
-      method: 'POST',
-      body: data,
-    })
+    try {
+      const response = await apiFetch<TokenResponse>('/auth/login', {
+        method: 'POST',
+        body: data,
+      })
 
-    setAccessToken(response.access_token)
+      setAccessToken(response.access_token)
 
-    return {
-      token_type: response.token_type,
-      expires_in: response.expires_in,
-      access_token_preview: truncateAccessToken(response.access_token),
+      return {
+        token_type: response.token_type,
+        expires_in: response.expires_in,
+        access_token_preview: truncateAccessToken(response.access_token),
+      }
+    } catch (err) {
+      console.error('[loginServerFn] error:', err)
+      throw new Error(err instanceof Error ? err.message : String(err))
     }
   })
 
@@ -122,6 +128,16 @@ export const getCurrentSessionServerFn = createServerFn({ method: 'GET' })
       access_token_preview: truncateAccessToken(token),
       expires_in: null,
     }
+  })
+
+// ---------------------------------------------------------------------------
+// `GET /profile` — current user profile
+// ---------------------------------------------------------------------------
+
+export const getCurrentUserServerFn = createServerFn({ method: 'GET' })
+  .handler(async (): Promise<UserDto> => {
+    getApiBaseUrl()
+    return apiFetch<UserDto>('/profile', { method: 'GET' })
   })
 
 // ---------------------------------------------------------------------------

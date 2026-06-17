@@ -134,14 +134,14 @@ function EditPostPage() {
       // If the user changed nothing, just bounce them back to the
       // detail page without making a no-op request.
       if (Object.keys(cmd).length === 0) {
-        await navigate({ to: '/posts/$id', params: { id: String(post.id) } })
+        await navigate({ to: '/posts/$id', params: { id: post.id } })
         return
       }
 
       await updatePostServerFn({
         data: { id: post.id, cmd: cmd as never },
       })
-      await navigate({ to: '/posts/$id', params: { id: String(post.id) } })
+      await navigate({ to: '/posts/$id', params: { id: post.id } })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not save the post.'
       setFormError(message)
@@ -157,7 +157,7 @@ function EditPostPage() {
     >
       <Link
         to="/posts/$id"
-        params={{ id: String(post.id) }}
+        params={{ id: post.id }}
         className="text-text-muted hover:text-text mb-4 inline-block text-sm transition-colors"
         data-ui="post-edit-back"
       >
@@ -275,7 +275,7 @@ function EditPostPage() {
             </Button>
             <Link
               to="/posts/$id"
-              params={{ id: String(post.id) }}
+              params={{ id: post.id }}
               data-ui="post-cancel"
             >
               <Button type="button" variant="ghost" disabled={submitting}>

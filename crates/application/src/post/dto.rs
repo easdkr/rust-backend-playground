@@ -3,8 +3,11 @@ use utoipa::ToSchema;
 use validator::{Validate, ValidationError};
 
 use super::entity::{Post, PostAuthor, PostStatus, PostWithAuthor};
+use crate::comment::dto::CommentThreadDto;
 use crate::pagination;
 use crate::validation;
+
+pub type PostRevisionRecord = infrastructure::persistence::seaorm::post_revision::PostRevision;
 
 const SLUG_MAX_LEN: usize = 140;
 const SLUG_REGEX_ERR: &str =
@@ -142,6 +145,30 @@ impl ListPostsQuery {
     }
 }
 
+/// Full-text search query parameters
+#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct SearchPostsQuery {
+    /// 검색어 (제목/본문 tsvector 대상)
+    pub q: String,
+    pub cursor: Option<i32>,
+    #[serde(default = "default_post_limit")]
+    pub limit: usize,
+}
+
+impl SearchPostsQuery {
+    pub fn validate(&self) -> Result<(), String> {
+        pagination::validate_limit(self.limit, POST_MIN_LIMIT, POST_MAX_LIMIT)?;
+        if self.q.trim().is_empty() {
+            return Err("q must not be empty".to_string());
+        }
+        if self.q.len() > 200 {
+            return Err("q must be 200 characters or fewer".to_string());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PostAuthorDto {
     pub id: String,
@@ -171,6 +198,10 @@ pub struct PostDto {
     pub published_at: Option<String>,
     pub deleted_at: Option<String>,
     pub view_count: i32,
+    pub like_count: i32,
+    pub comment_count: i32,
+    pub has_more_comments: bool,
+    pub comments: Vec<CommentThreadDto>,
 }
 
 impl From<PostWithAuthor> for PostDto {
@@ -189,6 +220,10 @@ impl From<PostWithAuthor> for PostDto {
             published_at: post.published_at.map(|t| t.to_rfc3339()),
             deleted_at: post.deleted_at.map(|t| t.to_rfc3339()),
             view_count: post.view_count,
+            like_count: post.like_count,
+            comment_count: 0,
+            has_more_comments: false,
+            comments: Vec::new(),
         }
     }
 }
@@ -228,4 +263,33 @@ pub struct BulkPostResultItem {
 pub struct BulkPostResult {
     pub succeeded: Vec<i32>,
     pub failed: Vec<BulkPostResultItem>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PostRevisionDto {
+    pub id: i32,
+    pub post_id: i32,
+    pub version: i32,
+    pub title: String,
+    pub content: String,
+    pub excerpt: Option<String>,
+    pub status: String,
+    pub editor_id: String,
+    pub created_at: String,
+}
+
+impl From<PostRevisionRecord> for PostRevisionDto {
+    fn from(record: PostRevisionRecord) -> Self {
+        Self {
+            id: record.id,
+            post_id: record.post_id,
+            version: record.version,
+            title: record.title,
+            content: record.content,
+            excerpt: record.excerpt,
+            status: record.status,
+            editor_id: record.editor_id,
+            created_at: record.created_at.to_rfc3339(),
+        }
+    }
 }

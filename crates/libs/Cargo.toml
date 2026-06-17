@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-default = []
+default = ["redis"]
 redis = ["dep:redis"]
 telemetry = ["dep:tracing-subscriber"]
 

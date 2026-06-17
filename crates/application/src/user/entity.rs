@@ -7,6 +7,9 @@ pub struct User {
     pub email: String,
     pub password_hash: String,
     pub role: Role,
+    pub bio: Option<String>,
+    pub avatar_url: Option<String>,
+    pub last_login_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

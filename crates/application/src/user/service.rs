@@ -25,6 +25,9 @@ fn user_from_record(
         email: record.email,
         password_hash: record.password_hash,
         role,
+        bio: record.bio,
+        avatar_url: record.avatar_url,
+        last_login_at: record.last_login_at,
     })
 }
 
@@ -62,6 +65,9 @@ impl AuthService {
         let user = user_from_record(record)?;
 
         verify_password(&cmd.password, &user.password_hash)?;
+
+        // Update last login time (best effort)
+        let _ = self.user_repo.update_last_login(&user.id).await;
 
         self.issue_token_pair(&user).await
     }
@@ -260,8 +266,100 @@ impl UserService {
                 username: u.username,
                 email: u.email,
                 role: u.role,
+                bio: u.bio,
+                avatar_url: u.avatar_url,
+                last_login_at: u.last_login_at,
             })
             .collect())
+    }
+
+    pub async fn update_profile(
+        &self,
+        user_id: &str,
+        cmd: super::dto::UpdateProfileCmd,
+    ) -> Result<super::dto::UserDto, AuthError> {
+        let _record = self
+            .user_repo
+            .find_by_id(user_id)
+            .await
+            .map_err(AuthError::internal)?
+            .ok_or(AuthError::UserNotFound)?;
+
+        let updated = self
+            .user_repo
+            .update_profile(user_id, cmd.bio, cmd.avatar_url)
+            .await
+            .map_err(AuthError::internal)?;
+
+        let user = user_from_record(updated)?;
+        Ok(UserDto {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            role: user.role,
+            bio: user.bio,
+            avatar_url: user.avatar_url,
+            last_login_at: user.last_login_at,
+        })
+    }
+
+    pub async fn update_last_login(&self, user_id: &str) -> Result<(), AuthError> {
+        self.user_repo
+            .update_last_login(user_id)
+            .await
+            .map_err(AuthError::internal)?;
+        Ok(())
+    }
+
+    pub async fn register(
+        &self,
+        cmd: super::dto::RegisterCmd,
+    ) -> Result<super::dto::UserDto, AuthError> {
+        if cmd.username.trim().is_empty() {
+            return Err(AuthError::InvalidCredentials);
+        }
+        if cmd.password.len() < 6 {
+            return Err(AuthError::InvalidCredentials);
+        }
+        if cmd.email.trim().is_empty() || !cmd.email.contains('@') {
+            return Err(AuthError::InvalidCredentials);
+        }
+
+        if self
+            .user_repo
+            .find_by_username(&cmd.username)
+            .await
+            .map_err(AuthError::internal)?
+            .is_some()
+        {
+            return Err(AuthError::UserAlreadyExists);
+        }
+
+        let password_hash =
+            crate::password::hash_password(&cmd.password).map_err(AuthError::internal)?;
+        let id = uuid::Uuid::new_v4().to_string();
+
+        let record = self
+            .user_repo
+            .create_user(
+                &id,
+                &cmd.username,
+                &cmd.email,
+                &password_hash,
+                super::entity::Role::User.as_str(),
+            )
+            .await
+            .map_err(AuthError::internal)?;
+
+        Ok(super::dto::UserDto {
+            id: record.id,
+            username: record.username,
+            email: record.email,
+            role: super::entity::Role::User,
+            bio: record.bio,
+            avatar_url: record.avatar_url,
+            last_login_at: record.last_login_at,
+        })
     }
 }
 

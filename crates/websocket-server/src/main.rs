@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use axum::{
     Router,
-    extract::ws::{Message, WebSocket, WebSocketUpgrade},
     extract::State,
+    extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::Response,
     routing::get,
 };
@@ -25,7 +25,6 @@ type UserSockets = Arc<RwLock<HashMap<String, Vec<tokio::sync::mpsc::UnboundedSe
 struct AppState {
     user_sockets: UserSockets,
     redis_pub: redis::aio::ConnectionManager,
-    redis_sub: redis::aio::ConnectionManager,
 }
 
 #[tokio::main]
@@ -41,13 +40,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Connecting to Valkey for Pub/Sub...");
     let redis_pub = connect_manager(&valkey_url).await?;
-    let redis_sub = connect_manager(&valkey_url).await?;
     info!("Valkey connected!");
 
     let state = AppState {
         user_sockets: Arc::new(RwLock::new(HashMap::new())),
         redis_pub,
-        redis_sub,
     };
 
     // Redis Pub/Sub 구독 태스크 시작
@@ -69,10 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<AppState>,
-) -> Response {
+async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
@@ -116,14 +110,11 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
     let _ = state
         .redis_pub
         .clone()
-        .publish::<_, _, ()>(
-            format!("ws:user:connected:{}", user_id),
-            "",
-        )
+        .publish::<_, _, ()>(format!("ws:user:connected:{}", user_id), "")
         .await;
 
     // 수신 루프: rx에서 메시지를 받아 WebSocket으로 전송
-    let mut send_task = tokio::spawn(async move {
+    let send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             if socket.send(msg).await.is_err() {
                 break;
@@ -150,8 +141,11 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
 
 /// Redis Pub/Sub으로 다른 서버 인스턴스에서 온 알림 수신
 async fn redis_subscriber(state: AppState) -> Result<(), Box<dyn std::error::Error>> {
-    let client = redis::Client::open(std::env::var("VALKEY_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string()))?;
-    let mut conn = client.get_async_connection().await?;
+    let client = redis::Client::open(
+        std::env::var("VALKEY_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string()),
+    )?;
+    #[allow(deprecated)]
+    let conn = client.get_async_connection().await?;
     let mut pubsub = conn.into_pubsub();
     pubsub.subscribe("notifications:broadcast").await?;
 

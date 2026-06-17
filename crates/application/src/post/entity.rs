@@ -45,6 +45,7 @@ pub struct Post {
     pub published_at: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
     pub view_count: i32,
+    pub like_count: i32,
 }
 
 impl Post {
@@ -62,6 +63,7 @@ impl Post {
             published_at: None,
             deleted_at: None,
             view_count: 0,
+            like_count: 0,
         }
     }
 

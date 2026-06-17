@@ -5,7 +5,9 @@ use super::{
     m20240101_000003_add_user_id_to_posts, m20240101_000004_create_comments,
     m20240101_000005_enhance_posts, m20240101_000006_create_tags,
     m20240101_000007_create_post_revisions, m20240101_000008_create_comments,
-    m20240101_000009_create_notifications,
+    m20240101_000009_create_notifications, m20240101_000010_create_likes,
+    m20240101_000011_add_user_profile_fields, m20240101_000012_add_fts_to_posts,
+    m20240101_000013_add_version_to_post_revisions,
 };
 
 pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
@@ -19,5 +21,9 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20240101_000007_create_post_revisions::Migration),
         Box::new(m20240101_000008_create_comments::Migration),
         Box::new(m20240101_000009_create_notifications::Migration),
+        Box::new(m20240101_000010_create_likes::Migration),
+        Box::new(m20240101_000011_add_user_profile_fields::Migration),
+        Box::new(m20240101_000012_add_fts_to_posts::Migration),
+        Box::new(m20240101_000013_add_version_to_post_revisions::Migration),
     ]
 }

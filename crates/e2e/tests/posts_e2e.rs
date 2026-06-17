@@ -186,3 +186,100 @@ async fn get_nonexistent_post_returns_not_found() {
 
     response.assert_status_not_found();
 }
+
+#[tokio::test]
+#[serial]
+async fn update_post_creates_revision_and_restore_works() {
+    let ctx = E2eContext::new().await;
+
+    let create = ctx
+        .server
+        .post("/posts")
+        .add_header("Authorization", ctx.bearer())
+        .json(&serde_json::json!({
+            "title": "revision 원본",
+            "content": "원본 내용"
+        }))
+        .await;
+    create.assert_status_success();
+    let id = create.json::<serde_json::Value>()["id"]
+        .as_i64()
+        .expect("post id");
+
+    let update = ctx
+        .server
+        .put(&format!("/posts/{id}"))
+        .add_header("Authorization", ctx.bearer())
+        .json(&serde_json::json!({
+            "title": "revision 수정",
+            "content": "수정 내용"
+        }))
+        .await;
+    update.assert_status_ok();
+
+    let revisions = ctx
+        .server
+        .get(&format!("/posts/{id}/revisions"))
+        .add_header("Authorization", ctx.bearer())
+        .await;
+    revisions.assert_status_ok();
+    let body: serde_json::Value = revisions.json();
+    let list = body.as_array().expect("revisions");
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["title"], "revision 원본");
+    assert_eq!(list[0]["content"], "원본 내용");
+    assert_eq!(list[0]["version"], 1);
+
+    let version = list[0]["version"].as_i64().expect("version");
+    let restore = ctx
+        .server
+        .post(&format!("/posts/{id}/revisions/{version}/restore"))
+        .add_header("Authorization", ctx.bearer())
+        .await;
+    restore.assert_status_ok();
+    let restored: serde_json::Value = restore.json();
+    assert_eq!(restored["title"], "revision 원본");
+    assert_eq!(restored["content"], "원본 내용");
+
+    let revisions2 = ctx
+        .server
+        .get(&format!("/posts/{id}/revisions"))
+        .add_header("Authorization", ctx.bearer())
+        .await;
+    revisions2.assert_status_ok();
+    assert_eq!(
+        revisions2
+            .json::<serde_json::Value>()
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn search_posts_with_full_text_search() {
+    let ctx = E2eContext::new().await;
+
+    let create = ctx
+        .server
+        .post("/posts")
+        .add_header("Authorization", ctx.bearer())
+        .json(&serde_json::json!({
+            "title": "검색 대상 제목",
+            "content": "검색 대상 본문"
+        }))
+        .await;
+    create.assert_status_success();
+
+    let search = ctx
+        .server
+        .get("/posts/search?q=검색")
+        .add_header("Authorization", ctx.bearer())
+        .await;
+    search.assert_status_ok();
+    let body: serde_json::Value = search.json();
+    assert_eq!(body["data"].as_array().expect("results").len(), 1);
+    assert_eq!(body["data"][0]["title"], "검색 대상 제목");
+}

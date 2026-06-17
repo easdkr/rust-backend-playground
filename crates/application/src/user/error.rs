@@ -4,6 +4,7 @@ use crate::error::DomainError;
 pub enum AuthError {
     InvalidCredentials,
     UserNotFound,
+    UserAlreadyExists,
     TokenExpired,
     TokenInvalid(String),
     TokenBlacklisted,
@@ -16,6 +17,7 @@ impl std::fmt::Display for AuthError {
         match self {
             AuthError::InvalidCredentials => write!(f, "Invalid username or password"),
             AuthError::UserNotFound => write!(f, "User not found"),
+            AuthError::UserAlreadyExists => write!(f, "User already exists"),
             AuthError::TokenExpired => write!(f, "Token has expired"),
             AuthError::TokenInvalid(msg) => write!(f, "Invalid token: {msg}"),
             AuthError::TokenBlacklisted => write!(f, "Token has been revoked"),

@@ -18,3 +18,11 @@ export {
   createPostServerFn,
   updatePostServerFn,
 } from './posts.ts'
+
+export {
+  listCommentsServerFn,
+  createCommentServerFn,
+  createReplyServerFn,
+  updateCommentServerFn,
+  deleteCommentServerFn,
+} from './comments.ts'

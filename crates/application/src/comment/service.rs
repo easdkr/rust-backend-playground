@@ -3,6 +3,8 @@ use std::sync::Arc;
 use infrastructure::persistence::seaorm::comment_repository::CommentRepository;
 use infrastructure::persistence::seaorm::post_repository::PostRepository;
 
+use crate::notification::dto::CreateNotificationCmd;
+use crate::notification::service::NotificationService;
 use crate::pagination::CursorPage;
 
 use super::dto::{CommentThreadDto, CreateCommentCmd, ListCommentsQuery, UpdateCommentCmd};
@@ -13,16 +15,19 @@ use super::mapper::domain_from_record;
 pub struct CommentService {
     comment_repo: Arc<dyn CommentRepository>,
     post_repo: Arc<dyn PostRepository>,
+    notification_service: Option<Arc<NotificationService>>,
 }
 
 impl CommentService {
     pub fn new(
         comment_repo: Arc<dyn CommentRepository>,
         post_repo: Arc<dyn PostRepository>,
+        notification_service: Option<Arc<NotificationService>>,
     ) -> Self {
         Self {
             comment_repo,
             post_repo,
+            notification_service,
         }
     }
 
@@ -33,8 +38,10 @@ impl CommentService {
         cmd: CreateCommentCmd,
     ) -> Result<Comment, CommentError> {
         self.verify_post_exists(post_id).await?;
-        let comment = Comment::new_root(post_id, current_user_id, cmd.content);
-        self.create(comment).await
+        let comment = Comment::new_root(post_id, current_user_id.clone(), cmd.content);
+        let saved = self.create(comment).await?;
+        self.notify_post_author(post_id, &current_user_id).await;
+        Ok(saved)
     }
 
     pub async fn create_reply(
@@ -50,10 +57,12 @@ impl CommentService {
             post_id,
             parent_comment_id,
             parent.depth,
-            current_user_id,
+            current_user_id.clone(),
             cmd.content,
         )?;
-        self.create(comment).await
+        let saved = self.create(comment).await?;
+        self.notify_post_author(post_id, &current_user_id).await;
+        Ok(saved)
     }
 
     pub async fn list(
@@ -222,5 +231,28 @@ impl CommentService {
         records: Vec<infrastructure::persistence::seaorm::comment::Comment>,
     ) -> Result<Vec<Comment>, CommentError> {
         records.into_iter().map(domain_from_record).collect()
+    }
+
+    async fn notify_post_author(&self, post_id: i32, commenter_id: &str) {
+        if let Some(ref svc) = self.notification_service {
+            let post = match self.post_repo.find_by_id(post_id).await {
+                Ok(Some(p)) => p,
+                _ => return,
+            };
+            if post.user_id == commenter_id {
+                return;
+            }
+            let _ = svc
+                .create(CreateNotificationCmd {
+                    user_id: post.user_id,
+                    notification_type: "comment".to_string(),
+                    title: "새 댓글".to_string(),
+                    body: "게시글에 새 댓글이 달렸습니다.".to_string(),
+                    data: Some(serde_json::json!({
+                        "post_id": post_id,
+                    })),
+                })
+                .await;
+        }
     }
 }

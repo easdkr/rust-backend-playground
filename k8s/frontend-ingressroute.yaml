@@ -1,0 +1,17 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: playground-frontend
+  namespace: playground
+spec:
+  entryPoints:
+    - web
+  routes:
+    # Catch-all route for the SPA. Traefik prioritises longer/more specific
+    # rules, so `/api`, `/auth`, `/ws` and `/scalar` still reach the backend.
+    - match: PathPrefix(`/`)
+      kind: Rule
+      priority: 1
+      services:
+        - name: frontend
+          port: 80

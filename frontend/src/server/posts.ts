@@ -77,7 +77,7 @@ export const listPostsServerFn = createServerFn({ method: 'GET' })
       }
 
       const queryString = params.toString()
-      const path = queryString.length > 0 ? `/posts?${queryString}` : '/posts'
+      const path = queryString.length > 0 ? `/api/posts?${queryString}` : '/api/posts'
 
       return apiFetch<CursorPage<PostDto>>(path, { method: 'GET' })
     },
@@ -98,7 +98,7 @@ export const getPostServerFn = createServerFn({ method: 'GET' })
   .inputValidator((data: { id: number }) => data)
   .handler(async ({ data }): Promise<PostDto> => {
     getApiBaseUrl()
-    return apiFetch<PostDto>(`/posts/${data.id}`, { method: 'GET' })
+    return apiFetch<PostDto>(`/api/posts/${data.id}`, { method: 'GET' })
   })
 
 // ---------------------------------------------------------------------------
@@ -119,7 +119,7 @@ export const createPostServerFn = createServerFn({ method: 'POST' })
   .inputValidator((data: CreatePostCmd) => data)
   .handler(async ({ data }): Promise<PostDto> => {
     getApiBaseUrl()
-    return apiFetch<PostDto>('/posts', { method: 'POST', body: data })
+    return apiFetch<PostDto>('/api/posts', { method: 'POST', body: data })
   })
 
 // ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ export const updatePostServerFn = createServerFn({ method: 'POST' })
   .inputValidator((data: { id: number; cmd: UpdatePostCmd }) => data)
   .handler(async ({ data }): Promise<PostDto> => {
     getApiBaseUrl()
-    return apiFetch<PostDto>(`/posts/${data.id}`, {
+    return apiFetch<PostDto>(`/api/posts/${data.id}`, {
       method: 'PUT',
       body: data.cmd,
     })

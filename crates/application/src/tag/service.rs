@@ -5,8 +5,8 @@ use chrono::{DateTime, Utc};
 use infrastructure::persistence::seaorm::tag::Tag;
 use infrastructure::persistence::seaorm::tag_repository::TagRepository;
 
-use super::dto::TagDto;
 use super::super::post::slug;
+use super::dto::TagDto;
 
 pub struct TagService {
     repo: Arc<dyn TagRepository>,

@@ -191,6 +191,11 @@ export interface PostDto {
   /** RFC3339 timestamp string, or `null` if never soft-deleted. */
   deleted_at: string | null
   view_count: number
+  like_count: number
+  comment_count: number
+  has_more_comments: boolean
+  /** Recent comment threads (up to 5 roots) returned with the post. */
+  comments: CommentThreadDto[]
 }
 
 // ---------------------------------------------------------------------------
@@ -206,6 +211,100 @@ export interface CursorPage<T> {
   /** Last id on this page; pass back as `cursor` for the next request. */
   next_cursor: number | null
   has_more: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Comments
+// ---------------------------------------------------------------------------
+
+/**
+ * Body of `POST /posts/:id/comments` and
+ * `POST /posts/:id/comments/:parent_comment_id/replies` —
+ * `crates/application/src/comment/dto.rs:11-15`.
+ */
+export interface CreateCommentCmd {
+  content: string
+}
+
+/**
+ * Body of `PUT /posts/:id/comments/:comment_id` —
+ * `crates/application/src/comment/dto.rs:17-21`.
+ */
+export interface UpdateCommentCmd {
+  content: string
+}
+
+/**
+ * Query parameters for `GET /posts/:id/comments` —
+ * `crates/application/src/comment/dto.rs:31-37`.
+ */
+export interface ListCommentsQuery {
+  cursor?: number | null
+  limit?: number | null
+}
+
+/**
+ * Wire shape of a comment — `crates/application/src/comment/dto.rs:45-55`.
+ */
+export interface CommentDto {
+  id: number
+  post_id: number
+  parent_comment_id: number | null
+  user_id: string
+  content: string
+  depth: number
+  /** RFC3339 timestamp string. */
+  created_at: string
+  /** RFC3339 timestamp string. */
+  updated_at: string
+}
+
+/**
+ * A reply together with its nested replies (depth 2) —
+ * `crates/application/src/comment/dto.rs:78-82`.
+ */
+export interface CommentReplyDto {
+  comment: CommentDto
+  replies: CommentDto[]
+}
+
+/**
+ * A root comment and its replies —
+ * `crates/application/src/comment/dto.rs:72-76`.
+ */
+export interface CommentThreadDto {
+  comment: CommentDto
+  replies: CommentReplyDto[]
+}
+
+// ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+
+/**
+ * `UserRole` — `crates/application/src/user/entity.rs`.
+ * Lowercase snake_case values from the backend enum.
+ */
+export const UserRole = {
+  Admin: 'admin',
+  Editor: 'editor',
+  User: 'user',
+} as const
+
+export type UserRole = (typeof UserRole)[keyof typeof UserRole]
+
+/**
+ * Wire shape of a user profile — `crates/application/src/user/dto.rs:57-66`.
+ */
+export interface UserDto {
+  id: string
+  username: string
+  email: string
+  role: UserRole
+  bio: string | null
+  avatar_url: string | null
+  /** RFC3339 timestamp string, or `null` if never logged in. */
+  last_login_at: string | null
 }
 
 // ---------------------------------------------------------------------------

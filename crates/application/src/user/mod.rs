@@ -5,8 +5,8 @@ pub mod service;
 pub mod token_repository;
 
 pub use dto::{
-    AccessTokenClaims, JwtConfig, LoginCmd, LogoutRequest, RefreshTokenRequest, TokenResponse,
-    UserDto,
+    AccessTokenClaims, JwtConfig, LoginCmd, LogoutRequest, RefreshTokenRequest, RegisterCmd,
+    TokenResponse, UserDto,
 };
 pub use entity::{Permission, Role, User};
 pub use error::AuthError;

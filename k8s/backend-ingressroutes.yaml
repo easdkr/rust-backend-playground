@@ -1,0 +1,118 @@
+# -----------------------------------------------------------------------------
+# Traefik IngressRoutes for the backend services.
+#
+# The Rust servers serve routes at their root paths (e.g. /health, /posts),
+# but the cluster ingress exposes them under /api, /auth, /ws and /scalar.
+# StripPrefix middleware removes those prefixes before forwarding.
+# -----------------------------------------------------------------------------
+
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-api
+  namespace: playground
+spec:
+  stripPrefix:
+    prefixes:
+      - /api
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-auth
+  namespace: playground
+spec:
+  stripPrefix:
+    prefixes:
+      - /auth
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-ws
+  namespace: playground
+spec:
+  stripPrefix:
+    prefixes:
+      - /ws
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: playground-api
+  namespace: playground
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/api`)
+      kind: Rule
+      middlewares:
+        - name: strip-api
+      services:
+        - name: api-server
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: playground-profile
+  namespace: playground
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/profile`)
+      kind: Rule
+      services:
+        - name: api-server
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: playground-scalar
+  namespace: playground
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/scalar`)
+      kind: Rule
+      services:
+        - name: api-server
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: playground-auth
+  namespace: playground
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/auth`)
+      kind: Rule
+      middlewares:
+        - name: strip-auth
+      services:
+        - name: auth-server
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: playground-ws
+  namespace: playground
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/ws`)
+      kind: Rule
+      middlewares:
+        - name: strip-ws
+      services:
+        - name: websocket-server
+          port: 80

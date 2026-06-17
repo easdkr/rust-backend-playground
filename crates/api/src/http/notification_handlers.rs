@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use application::notification::dto::{CreateNotificationCmd, NotificationDto, NotificationListQuery};
+use application::notification::dto::{
+    CreateNotificationCmd, NotificationDto, NotificationListQuery,
+};
 use application::notification::service::NotificationService;
 use axum::{
     Json,
@@ -15,7 +17,9 @@ fn map_notification_error(err: application::notification::error::NotificationErr
         application::notification::error::NotificationError::NotFound(id) => {
             AppError::NotFound(format!("Notification with id {id} not found"))
         }
-        application::notification::error::NotificationError::Domain(msg) => AppError::BadRequest(msg),
+        application::notification::error::NotificationError::Domain(msg) => {
+            AppError::BadRequest(msg)
+        }
         application::notification::error::NotificationError::Internal(msg) => {
             tracing::error!("Notification operation failed: {msg}");
             AppError::DatabaseError(msg)

@@ -38,7 +38,7 @@ export const listNotificationsServerFn = createServerFn({ method: 'GET' })
     }
 
     const queryString = params.toString()
-    const path = queryString.length > 0 ? `/notifications?${queryString}` : '/notifications'
+    const path = queryString.length > 0 ? `/api/notifications?${queryString}` : '/api/notifications'
 
     return apiFetch<NotificationDto[]>(path, { method: 'GET' })
   })
@@ -51,7 +51,7 @@ export const getUnreadCountServerFn = createServerFn({ method: 'GET' })
   .handler(async (): Promise<number> => {
     getApiBaseUrl()
 
-    const response = await apiFetch<UnreadCountResponse>('/notifications/unread/count', {
+    const response = await apiFetch<UnreadCountResponse>('/api/notifications/unread-count', {
       method: 'GET',
     })
     return response.count
@@ -65,7 +65,7 @@ export const markAsReadServerFn = createServerFn({ method: 'POST' })
   .inputValidator((data: { id: number }) => data)
   .handler(async ({ data }): Promise<NotificationDto> => {
     getApiBaseUrl()
-    return apiFetch<NotificationDto>(`/notifications/${data.id}/read`, {
+    return apiFetch<NotificationDto>(`/api/notifications/${data.id}/read`, {
       method: 'PATCH',
     })
   })
@@ -77,7 +77,7 @@ export const markAsReadServerFn = createServerFn({ method: 'POST' })
 export const markAllAsReadServerFn = createServerFn({ method: 'POST' })
   .handler(async (): Promise<{ updated: number }> => {
     getApiBaseUrl()
-    return apiFetch<{ updated: number }>('/notifications/read/all', {
+    return apiFetch<{ updated: number }>('/api/notifications/read-all', {
       method: 'PATCH',
     })
   })

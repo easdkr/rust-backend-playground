@@ -12,9 +12,10 @@
  *   - error (other 4xx/5xx)    → ErrorMessage block
  *   - happy path               → title, status, author, timestamps, body
  */
-import { createFileRoute, Link, notFound } from '@tanstack/react-router'
+import { createFileRoute, Link, notFound, useRouteContext } from '@tanstack/react-router'
 import { Badge, Button, Card, ErrorMessage, Spinner } from '~/design-system'
-import type { PostDto } from '~/lib/api/types'
+import { CommentSection } from '~/components/comment-section'
+import type { PostDto, UserDto } from '~/lib/api/types'
 import { getPostServerFn } from '~/server/posts'
 
 export const Route = createFileRoute('/_authed/posts/$id')({
@@ -50,6 +51,7 @@ export const Route = createFileRoute('/_authed/posts/$id')({
 
 function PostDetailPage() {
   const post = Route.useLoaderData()
+  const { user } = useRouteContext({ from: '/_authed' })
   return (
     <main
       data-ui="post-detail"
@@ -112,7 +114,7 @@ function PostDetailPage() {
         <footer className="border-border-subtle mt-6 flex items-center gap-2 border-t pt-4">
           <Link
             to="/posts/$id/edit"
-            params={{ id: String(post.id) }}
+            params={{ id: post.id }}
             data-ui="post-detail-edit"
           >
             <Button variant="secondary" size="sm">
@@ -121,6 +123,8 @@ function PostDetailPage() {
           </Link>
         </footer>
       </Card>
+
+      <CommentSection post={post} currentUser={user as UserDto} />
     </main>
   )
 }
@@ -196,9 +200,7 @@ function StatusBadge({ status }: { status: PostDto['status'] }) {
       ? 'success'
       : status === 'archived'
         ? 'warn'
-        : status === 'deleted'
-          ? 'danger'
-          : 'neutral'
+        : 'neutral'
   const label = status.charAt(0).toUpperCase() + status.slice(1)
   return (
     <Badge tone={tone} data-ui="post-status">

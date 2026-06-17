@@ -2,15 +2,13 @@ use async_trait::async_trait;
 use chrono::Utc;
 use libs::error::IntoStringErr;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
 };
 
 use infrastructure::persistence::seaorm::notification::{ActiveModel, Entity, Notification};
 
-use super::repository::{
-    NotificationFilter, NotificationListResult, NotificationRepository,
-};
+use super::repository::{NotificationFilter, NotificationListResult, NotificationRepository};
 
 pub struct SeaOrmNotificationRepository {
     db: sea_orm::DatabaseConnection,
@@ -60,9 +58,8 @@ impl NotificationRepository for SeaOrmNotificationRepository {
         );
 
         if let Some(is_read) = filter.is_read {
-            condition = condition.add(
-                infrastructure::persistence::seaorm::notification::Column::IsRead.eq(is_read),
-            );
+            condition = condition
+                .add(infrastructure::persistence::seaorm::notification::Column::IsRead.eq(is_read));
         }
 
         let total = Entity::find()
@@ -104,12 +101,8 @@ impl NotificationRepository for SeaOrmNotificationRepository {
 
     async fn mark_all_as_read(&self, user_id: &str) -> Result<u64, String> {
         let notifications = Entity::find()
-            .filter(
-                infrastructure::persistence::seaorm::notification::Column::UserId.eq(user_id),
-            )
-            .filter(
-                infrastructure::persistence::seaorm::notification::Column::IsRead.eq(false),
-            )
+            .filter(infrastructure::persistence::seaorm::notification::Column::UserId.eq(user_id))
+            .filter(infrastructure::persistence::seaorm::notification::Column::IsRead.eq(false))
             .all(&self.db)
             .await
             .map_err_string()?;
@@ -128,12 +121,8 @@ impl NotificationRepository for SeaOrmNotificationRepository {
 
     async fn count_unread(&self, user_id: &str) -> Result<i64, String> {
         Entity::find()
-            .filter(
-                infrastructure::persistence::seaorm::notification::Column::UserId.eq(user_id),
-            )
-            .filter(
-                infrastructure::persistence::seaorm::notification::Column::IsRead.eq(false),
-            )
+            .filter(infrastructure::persistence::seaorm::notification::Column::UserId.eq(user_id))
+            .filter(infrastructure::persistence::seaorm::notification::Column::IsRead.eq(false))
             .count(&self.db)
             .await
             .map_err_string()
@@ -143,9 +132,7 @@ impl NotificationRepository for SeaOrmNotificationRepository {
     async fn delete(&self, id: i32, user_id: &str) -> Result<bool, String> {
         let result = Entity::delete_many()
             .filter(infrastructure::persistence::seaorm::notification::Column::Id.eq(id))
-            .filter(
-                infrastructure::persistence::seaorm::notification::Column::UserId.eq(user_id),
-            )
+            .filter(infrastructure::persistence::seaorm::notification::Column::UserId.eq(user_id))
             .exec(&self.db)
             .await
             .map_err_string()?;

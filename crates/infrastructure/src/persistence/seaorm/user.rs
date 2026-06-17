@@ -14,6 +14,9 @@ pub struct Model {
     pub role: String,
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
+    pub bio: Option<String>,
+    pub avatar_url: Option<String>,
+    pub last_login_at: Option<DateTimeUtc>,
 }
 
 pub type User = Model;

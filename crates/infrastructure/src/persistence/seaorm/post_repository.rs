@@ -1,13 +1,14 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use libs::error::IntoStringErr;
+use sea_orm::prelude::DateTimeUtc;
 use sea_orm::sea_query::extension::postgres::PgExpr;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, JoinType, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, RelationTrait, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
 };
 
-use super::post::{ActiveModel, Column, Entity, Post, Relation};
+use super::post::{ActiveModel, Column, Entity, Post};
 use super::user::{Entity as UserEntity, Model as UserModel};
 
 #[derive(Debug, Clone, Default)]
@@ -78,6 +79,12 @@ pub trait PostRepository: Send + Sync {
     async fn delete(&self, id: i32) -> Result<bool, String>;
     async fn soft_delete(&self, id: i32) -> Result<bool, String>;
     async fn count(&self) -> Result<u64, String>;
+    async fn search_fts(
+        &self,
+        query: &str,
+        cursor: Option<i32>,
+        limit: usize,
+    ) -> Result<CursorPaginationResult<PostWithAuthorRow>, String>;
 }
 
 pub struct SeaOrmPostRepository {
@@ -142,9 +149,7 @@ impl PostRepository for SeaOrmPostRepository {
         let limit = filter.limit.max(1);
         let limit_plus_one = limit + 1;
 
-        let mut query = Entity::find()
-            .join(JoinType::LeftJoin, Relation::User.def())
-            .order_by_desc(Column::Id);
+        let mut query = Entity::find().order_by_desc(Column::Id);
 
         if !filter.include_deleted {
             query = query.filter(Column::DeletedAt.is_null());
@@ -154,16 +159,16 @@ impl PostRepository for SeaOrmPostRepository {
             query = query.filter(Column::Id.lt(cursor_id));
         }
 
-        if let Some(status) = &filter.status {
-            if !status.is_empty() {
-                query = query.filter(Column::Status.eq(status.clone()));
-            }
+        if let Some(status) = &filter.status
+            && !status.is_empty()
+        {
+            query = query.filter(Column::Status.eq(status.clone()));
         }
 
-        if let Some(author) = &filter.author_id {
-            if !author.is_empty() {
-                query = query.filter(Column::UserId.eq(author.clone()));
-            }
+        if let Some(author) = &filter.author_id
+            && !author.is_empty()
+        {
+            query = query.filter(Column::UserId.eq(author.clone()));
         }
 
         if let Some(q) = &filter.q {
@@ -232,7 +237,7 @@ impl PostRepository for SeaOrmPostRepository {
 
     async fn find_by_id_with_author(&self, id: i32) -> Result<Option<PostWithAuthorRow>, String> {
         let row: Option<(Post, Option<UserModel>)> = Entity::find_by_id(id)
-            .join(JoinType::LeftJoin, Relation::User.def())
+            .filter(Column::DeletedAt.is_null())
             .find_also_related(UserEntity)
             .one(&self.db)
             .await
@@ -256,7 +261,6 @@ impl PostRepository for SeaOrmPostRepository {
         let row: Option<(Post, Option<UserModel>)> = Entity::find()
             .filter(Column::Slug.eq(slug))
             .filter(Column::DeletedAt.is_null())
-            .join(JoinType::LeftJoin, Relation::User.def())
             .find_also_related(UserEntity)
             .one(&self.db)
             .await
@@ -359,5 +363,133 @@ impl PostRepository for SeaOrmPostRepository {
             .count(&self.db)
             .await
             .map_err_string()
+    }
+
+    async fn search_fts(
+        &self,
+        query: &str,
+        cursor: Option<i32>,
+        limit: usize,
+    ) -> Result<CursorPaginationResult<PostWithAuthorRow>, String> {
+        let limit = limit.max(1);
+        let limit_plus_one = limit + 1;
+
+        let ts_query = query
+            .split_whitespace()
+            .map(|w| format!("{}:*", w))
+            .collect::<Vec<_>>()
+            .join(" & ");
+
+        let sql = format!(
+            r#"
+            SELECT p.*, u.id as u_id, u.username, u.email, u.role, u.bio, u.avatar_url, u.last_login_at, u.created_at as u_created_at, u.updated_at as u_updated_at
+            FROM posts p
+            LEFT JOIN users u ON p.user_id = u.id
+            WHERE p.deleted_at IS NULL
+            AND p.search_vector @@ to_tsquery('simple', $1)
+            {cursor_filter}
+            ORDER BY ts_rank(p.search_vector, to_tsquery('simple', $1)) DESC, p.id DESC
+            LIMIT $2
+            "#,
+            cursor_filter = if cursor.is_some() {
+                "AND p.id < $3"
+            } else {
+                ""
+            }
+        );
+
+        let mut values: Vec<sea_orm::Value> = vec![
+            sea_orm::Value::from(ts_query.clone()),
+            sea_orm::Value::from(limit_plus_one as i64),
+        ];
+        if let Some(c) = cursor {
+            values.push(sea_orm::Value::from(c));
+        }
+
+        let stmt = Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            sql.as_str(),
+            values,
+        );
+
+        let rows = self.db.query_all(stmt).await.map_err_string()?;
+
+        let mut results: Vec<PostWithAuthorRow> = Vec::new();
+        for row in rows {
+            let post = Post {
+                id: row.try_get_by::<i32, _>("id").map_err_string()?,
+                title: row.try_get_by::<String, _>("title").map_err_string()?,
+                content: row.try_get_by::<String, _>("content").map_err_string()?,
+                excerpt: row
+                    .try_get_by::<Option<String>, _>("excerpt")
+                    .map_err_string()?,
+                status: row.try_get_by::<String, _>("status").map_err_string()?,
+                user_id: row.try_get_by::<String, _>("user_id").map_err_string()?,
+                slug: row
+                    .try_get_by::<Option<String>, _>("slug")
+                    .map_err_string()?,
+                view_count: row.try_get_by::<i32, _>("view_count").map_err_string()?,
+                like_count: row.try_get_by::<i32, _>("like_count").unwrap_or(0),
+                created_at: row
+                    .try_get_by::<DateTimeUtc, _>("created_at")
+                    .map_err_string()?,
+                updated_at: row
+                    .try_get_by::<DateTimeUtc, _>("updated_at")
+                    .map_err_string()?,
+                deleted_at: row
+                    .try_get_by::<Option<DateTimeUtc>, _>("deleted_at")
+                    .map_err_string()?,
+                published_at: row
+                    .try_get_by::<Option<DateTimeUtc>, _>("published_at")
+                    .map_err_string()?,
+                search_vector: None,
+            };
+            let author = if let Some(u_id) = row
+                .try_get_by::<Option<String>, _>("u_id")
+                .map_err_string()?
+            {
+                Some(UserModel {
+                    id: u_id,
+                    username: row.try_get_by::<String, _>("username").map_err_string()?,
+                    email: row.try_get_by::<String, _>("email").map_err_string()?,
+                    password_hash: String::new(),
+                    role: row.try_get_by::<String, _>("role").map_err_string()?,
+                    bio: row
+                        .try_get_by::<Option<String>, _>("bio")
+                        .map_err_string()?,
+                    avatar_url: row
+                        .try_get_by::<Option<String>, _>("avatar_url")
+                        .map_err_string()?,
+                    last_login_at: row
+                        .try_get_by::<Option<DateTimeUtc>, _>("last_login_at")
+                        .map_err_string()?,
+                    created_at: row
+                        .try_get_by::<DateTimeUtc, _>("u_created_at")
+                        .map_err_string()?,
+                    updated_at: row
+                        .try_get_by::<DateTimeUtc, _>("u_updated_at")
+                        .map_err_string()?,
+                })
+            } else {
+                None
+            };
+            results.push(PostWithAuthorRow { post, author });
+        }
+
+        let has_more = results.len() > limit;
+        if has_more {
+            results.pop();
+        }
+        let next_cursor = if has_more {
+            results.last().map(|w| w.post.id)
+        } else {
+            None
+        };
+
+        Ok(CursorPaginationResult {
+            data: results,
+            next_cursor,
+            has_more,
+        })
     }
 }

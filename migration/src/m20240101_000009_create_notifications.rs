@@ -21,11 +21,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Notification::UserId).string().not_null())
                     .col(ColumnDef::new(Notification::Type).string().not_null())
                     .col(ColumnDef::new(Notification::Title).string().not_null())
-                    .col(
-                        ColumnDef::new(Notification::Body)
-                            .text()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Notification::Body).text().not_null())
                     .col(ColumnDef::new(Notification::Data).json())
                     .col(
                         ColumnDef::new(Notification::IsRead)
@@ -39,10 +35,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .col(
-                        ColumnDef::new(Notification::ReadAt)
-                            .timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(Notification::ReadAt).timestamp_with_time_zone())
                     .to_owned(),
             )
             .await?;

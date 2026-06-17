@@ -11,11 +11,9 @@ pub fn slugify(input: &str) -> String {
                 out.push(low);
             }
             prev_sep = false;
-        } else if c.is_whitespace() || c == '-' || c == '_' {
-            if !prev_sep && !out.is_empty() {
-                out.push('-');
-                prev_sep = true;
-            }
+        } else if (c.is_whitespace() || c == '-' || c == '_') && !prev_sep && !out.is_empty() {
+            out.push('-');
+            prev_sep = true;
         }
     }
     out.trim_matches('-').to_string()

@@ -4,9 +4,13 @@ use std::sync::Arc;
 
 use infrastructure::cache::post_cache::PostCache;
 use infrastructure::persistence::seaorm::post_repository::{PostListFilter, PostRepository};
+use infrastructure::persistence::seaorm::post_revision_repository::PostRevisionRepository;
 use serde::{Deserialize, Serialize};
 
-use super::dto::{BulkPostAction, BulkPostResult, BulkPostResultItem, ListPostsQuery, PostDto};
+use super::dto::{
+    BulkPostAction, BulkPostResult, BulkPostResultItem, ListPostsQuery, PostDto, PostRevisionDto,
+    SearchPostsQuery,
+};
 use super::entity::{Post, PostAuthor, PostWithAuthor};
 use super::error::PostError;
 use super::mapper::domain_from_record;
@@ -27,11 +31,20 @@ struct CachedPage {
 pub struct PostService {
     repo: Arc<dyn PostRepository>,
     cache: Arc<dyn PostCache>,
+    revision_repo: Option<Arc<dyn PostRevisionRepository>>,
 }
 
 impl PostService {
-    pub fn new(repo: Arc<dyn PostRepository>, cache: Arc<dyn PostCache>) -> Self {
-        Self { repo, cache }
+    pub fn new(
+        repo: Arc<dyn PostRepository>,
+        cache: Arc<dyn PostCache>,
+        revision_repo: Option<Arc<dyn PostRevisionRepository>>,
+    ) -> Self {
+        Self {
+            repo,
+            cache,
+            revision_repo,
+        }
     }
 
     pub async fn create(
@@ -79,10 +92,10 @@ impl PostService {
 
         let hash = self.query_hash(&query);
         let key = format!("{LIST_KEY_PREFIX}{hash}");
-        if let Ok(Some(raw)) = self.cache.get(&key).await {
-            if let Ok(page) = serde_json::from_str::<CachedPage>(&raw) {
-                return Ok(self.to_cursor_page(page));
-            }
+        if let Ok(Some(raw)) = self.cache.get(&key).await
+            && let Ok(page) = serde_json::from_str::<CachedPage>(&raw)
+        {
+            return Ok(self.to_cursor_page(page));
         }
 
         let filter = PostListFilter {
@@ -116,16 +129,41 @@ impl PostService {
         Ok(self.to_cursor_page(page))
     }
 
+    pub async fn search_fts(
+        &self,
+        query: SearchPostsQuery,
+    ) -> Result<crate::pagination::CursorPage<PostDto>, PostError> {
+        query.validate().map_err(PostError::Domain)?;
+
+        let result = self
+            .repo
+            .search_fts(&query.q, query.cursor, query.limit)
+            .await
+            .map_err(PostError::repo)?;
+
+        let page = CachedPage {
+            data: result
+                .data
+                .into_iter()
+                .map(|row| self.row_to_with_author(row))
+                .collect(),
+            next_cursor: result.next_cursor,
+            has_more: result.has_more,
+        };
+
+        Ok(self.to_cursor_page(page))
+    }
+
     pub async fn get(&self, id: i32) -> Result<PostWithAuthor, PostError> {
         self.get_with_author(id).await
     }
 
     pub async fn get_with_author(&self, id: i32) -> Result<PostWithAuthor, PostError> {
         let key = format!("{POST_KEY_PREFIX}{id}");
-        if let Ok(Some(raw)) = self.cache.get(&key).await {
-            if let Ok(wa) = serde_json::from_str::<PostWithAuthor>(&raw) {
-                return Ok(wa);
-            }
+        if let Ok(Some(raw)) = self.cache.get(&key).await
+            && let Ok(wa) = serde_json::from_str::<PostWithAuthor>(&raw)
+        {
+            return Ok(wa);
         }
         let row = self
             .repo
@@ -160,8 +198,22 @@ impl PostService {
             .await
             .map_err(PostError::repo)?
             .ok_or(PostError::NotFound(id))?;
-        let mut post = domain_from_record(record)?;
+        let mut post = domain_from_record(record.clone())?;
         Self::verify_ownership(&post, current_user_id)?;
+
+        if let Some(ref revision_repo) = self.revision_repo {
+            revision_repo
+                .save_revision(
+                    id,
+                    current_user_id.to_string(),
+                    record.title,
+                    record.content,
+                    record.excerpt,
+                    record.status,
+                )
+                .await
+                .map_err(PostError::repo)?;
+        }
 
         if let Some(ref requested) = cmd.slug {
             post.slug = Some(
@@ -181,6 +233,115 @@ impl PostService {
                 post.excerpt.clone(),
                 post.slug.clone(),
                 post.status.as_str().to_string(),
+            )
+            .await
+            .map_err(PostError::repo)?;
+        let updated = domain_from_record(saved)?;
+        let with_author = PostWithAuthor {
+            post: updated,
+            author: None,
+        };
+        self.write_through(&with_author).await;
+        self.invalidate_lists().await;
+        Ok(with_author)
+    }
+
+    pub async fn list_revisions(&self, post_id: i32) -> Result<Vec<PostRevisionDto>, PostError> {
+        self.repo
+            .find_by_id(post_id)
+            .await
+            .map_err(PostError::repo)?
+            .ok_or(PostError::NotFound(post_id))?;
+
+        let Some(ref revision_repo) = self.revision_repo else {
+            return Ok(Vec::new());
+        };
+
+        let revisions = revision_repo
+            .find_by_post_id(post_id)
+            .await
+            .map_err(PostError::repo)?;
+        Ok(revisions.into_iter().map(PostRevisionDto::from).collect())
+    }
+
+    pub async fn get_revision(
+        &self,
+        post_id: i32,
+        version: i32,
+    ) -> Result<PostRevisionDto, PostError> {
+        self.repo
+            .find_by_id(post_id)
+            .await
+            .map_err(PostError::repo)?
+            .ok_or(PostError::NotFound(post_id))?;
+
+        let Some(ref revision_repo) = self.revision_repo else {
+            return Err(PostError::Domain(
+                "Revision history is disabled".to_string(),
+            ));
+        };
+
+        let revision = revision_repo
+            .find_by_post_id_and_version(post_id, version)
+            .await
+            .map_err(PostError::repo)?
+            .ok_or_else(|| {
+                PostError::Domain(format!("Revision {version} not found for post {post_id}"))
+            })?;
+        Ok(PostRevisionDto::from(revision))
+    }
+
+    pub async fn restore_revision(
+        &self,
+        post_id: i32,
+        version: i32,
+        current_user_id: &str,
+    ) -> Result<PostWithAuthor, PostError> {
+        let record = self
+            .repo
+            .find_by_id(post_id)
+            .await
+            .map_err(PostError::repo)?
+            .ok_or(PostError::NotFound(post_id))?;
+        let post = domain_from_record(record.clone())?;
+        Self::verify_ownership(&post, current_user_id)?;
+
+        let Some(ref revision_repo) = self.revision_repo else {
+            return Err(PostError::Domain(
+                "Revision history is disabled".to_string(),
+            ));
+        };
+
+        let revision = revision_repo
+            .find_by_post_id_and_version(post_id, version)
+            .await
+            .map_err(PostError::repo)?
+            .ok_or_else(|| {
+                PostError::Domain(format!("Revision {version} not found for post {post_id}"))
+            })?;
+
+        // 현재 상태를 먼저 버전으로 보존한 뒨 선택한 리비전으로 되돌립니다.
+        revision_repo
+            .save_revision(
+                post_id,
+                current_user_id.to_string(),
+                record.title,
+                record.content,
+                record.excerpt,
+                record.status,
+            )
+            .await
+            .map_err(PostError::repo)?;
+
+        let saved = self
+            .repo
+            .update(
+                post_id,
+                revision.title,
+                revision.content,
+                revision.excerpt,
+                post.slug.clone(),
+                revision.status,
             )
             .await
             .map_err(PostError::repo)?;

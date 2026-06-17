@@ -19,28 +19,33 @@
 import { type ReactNode } from 'react'
 import { Link, Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 import { Button } from '~/design-system'
-import { clearSessionServerFn, getCurrentSessionServerFn } from '~/server/auth'
+import { UnauthorizedError } from '~/lib/api'
+import { clearSessionServerFn, getCurrentUserServerFn } from '~/server/auth'
 
 export const Route = createFileRoute('/_authed')({
   beforeLoad: async ({ location }) => {
-    const session = await getCurrentSessionServerFn()
-    if (session === null) {
-      throw redirect({
-        to: '/login',
-        search: { redirect: location.href },
-      })
+    try {
+      const user = await getCurrentUserServerFn()
+      return { user }
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        throw redirect({
+          to: '/login',
+          search: { redirect: location.href },
+        })
+      }
+      throw err
     }
-    return { session }
   },
-  loader: ({ context }) => context.session,
+  loader: ({ context }) => context.user,
   component: AuthedShell,
 })
 
 function AuthedShell() {
-  // `loader` puts the session on the route context, available via
+  // `loader` puts the current user on the route context, available via
   // `Route.useLoaderData()` if a child wants it. The shell itself only
   // needs the username for the "Signed in as …" chip.
-  const session = Route.useLoaderData()
+  const user = Route.useLoaderData()
 
   return (
     <div
@@ -89,7 +94,7 @@ function AuthedShell() {
               className="text-text-subtle hidden text-xs sm:inline"
               data-ui="shell-user"
             >
-              Signed in as <span className="text-text-muted font-mono">{session.username}</span>
+              Signed in as <span className="text-text-muted font-mono">{user.username}</span>
             </span>
             <SignOutButton />
           </div>

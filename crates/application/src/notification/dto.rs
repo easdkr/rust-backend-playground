@@ -4,7 +4,7 @@ use serde_json::Value;
 use utoipa::ToSchema;
 use validator::Validate;
 
-use super::entity::{Notification, NotificationType};
+use super::entity::Notification;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NotificationDto {

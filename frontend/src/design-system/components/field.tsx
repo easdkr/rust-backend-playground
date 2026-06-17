@@ -28,6 +28,8 @@ export interface FieldProps {
   children: ReactNode | ((props: FieldControlProps) => ReactNode);
   /** Optional className for the outer wrapper. */
   className?: string;
+  /** Explicit id for the label/control link. Falls back to a generated id. */
+  htmlFor?: string;
   /** Hide the visible label while keeping it for screen readers. */
   hideLabel?: boolean;
   /** Render `children` inside a flex row (radio / check group). */
@@ -41,15 +43,16 @@ export interface FieldProps {
  */
 export function Field({
   label, hint, error, invalid = false, children,
-  className, hideLabel = false, inline = false,
+  className, htmlFor, hideLabel = false, inline = false,
 }: FieldProps) {
   const reactId = useId();
+  const controlId = htmlFor ?? reactId;
   const showError = invalid === true || Boolean(error);
   const descId = showError
-    ? `${reactId}-error`
-    : hint ? `${reactId}-hint` : undefined;
+    ? `${controlId}-error`
+    : hint ? `${controlId}-hint` : undefined;
   const controlProps: FieldControlProps = {
-    id: reactId,
+    id: controlId,
     invalid: showError,
     ...(descId ? { 'aria-describedby': descId } : {}),
   };
@@ -60,7 +63,7 @@ export function Field({
       className={cn('flex flex-col gap-1.5', className)}
     >
       <label
-        htmlFor={reactId}
+        htmlFor={controlId}
         className={cn(
           'text-text-muted text-xs font-medium',
           hideLabel && 'sr-only',
